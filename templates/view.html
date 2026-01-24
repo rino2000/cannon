@@ -2,67 +2,144 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Spielbrett</title>
+    <title>Cannon</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
       table {
         border-collapse: collapse;
       }
       td {
-        width: 40px;
-        height: 40px;
+        border: 1px solid black;
+        width: 30px;
+        height: 30px;
         text-align: center;
-        border: 1px solid #000;
-        font-size: 24px;
         cursor: pointer;
+      }
+      #board {
+        margin-top: 20px;
+      }
+      .info {
+        margin: 10px 0;
+        color: red;
       }
     </style>
   </head>
   <body>
-    <h1>Legende: Soldaten 👇🏻 Soldaten 👆🏿 Stadt 🏠 Stadt 🏡</h1>
-    <table id="board">
-      {% for row in data %}
-      <tr>
-        {% for item in row %}
-        <td>{{ item }}</td>
-        {% endfor %}
-      </tr>
-      {% endfor %}
-    </table>
+    <h1>Cannon</h1>
+
+    <label>Room name: <input type="text" id="roomInput" /> </label>
+    <button id="joinBtn">Join Room</button>
+
+    <p id="info"></p>
+    <table id="board"></table>
 
     <script>
-      const socket = io();
-
-      function renderField(field) {
-        const table = document.getElementById("board");
-        table.innerHTML = "";
-        for (const row of field) {
-          const tr = document.createElement("tr");
-          for (const cell of row) {
-            const td = document.createElement("td");
-            td.textContent = cell;
-            tr.appendChild(td);
-          }
-          table.appendChild(tr);
-        }
-      }
-
-      socket.on("update_field", (field) => {
-        renderField(field);
+      const socket = io("http://127.0.0.1:8000", {
+        transports: ["polling"],
       });
 
-      document.getElementById("board").addEventListener("click", (e) => {
-        const td = e.target;
-        const tr = td.parentNode;
-        const row = Array.from(tr.parentNode.children).indexOf(tr);
-        const col = Array.from(tr.children).indexOf(td);
+      let room = null;
+      let field = [];
+      let soldierCount = 0;
+      const maxSoldiers = 15;
+      let player = 0;
+      let players = [];
 
-        const data = {
-          spieler: 0,
-          coordinate: [[row, col]],
-          town: [row, col],
-        };
-        socket.emit("place_soldaten", data);
+      const boardEl = document.getElementById("board");
+      const infoEl = document.getElementById("info");
+
+      // Join Room with roomname
+      document.getElementById("joinBtn").addEventListener("click", () => {
+        const roomInput = document.getElementById("roomInput").value.trim();
+        if (!roomInput) return alert("Enter a room name!");
+        room = roomInput;
+        socket.emit("join_room", { room });
+      });
+
+      function drawField() {
+        boardEl.innerHTML = "";
+        field.forEach((row, i) => {
+          const tr = document.createElement("tr");
+          row.forEach((cell, j) => {
+            const td = document.createElement("td");
+            td.innerHTML = cell;
+            td.addEventListener("click", () => handleCellClick(i, j));
+            tr.appendChild(td);
+          });
+          boardEl.appendChild(tr);
+        });
+      }
+
+      // --- Handle cell click ---
+      function handleCellClick(x, y) {
+        if (!room) return alert("Join a room first!");
+        if (soldierCount >= maxSoldiers) {
+          alert("Max 15 soldiers placed!");
+          return;
+        }
+        field[x][y] = player === 0 ? "👇🏻" : "👆🏿";
+        soldierCount++;
+      }
+
+      drawField();
+
+      // Send update to server
+      const soldiersCoords = [];
+      const townCoord = [];
+      field.forEach((row, i) => {
+        row.forEach((cell, j) => {
+          if (cell === "👇🏻" || cell === "👆🏿") soldiersCoords.push([i, j]);
+          if (cell === "🏠" || cell === "🏡") townCoord.push([i, j]);
+        });
+      });
+
+      /*
+        if (townCoord.length > 1) {
+          alert("Max one town!");
+          return;
+        }
+
+        if (soldiersCoords.length === 0 && townCoord.length === 0) return;
+
+        socket.emit("place_soldaten", {
+          room,
+          spieler: player,
+          soldaten: soldiersCoords,
+          town: townCoord[0] || [0, 0], // placeholder if town not placed
+        });
+          */
+
+      // --- Socket events ---
+      socket.on("joined_room", (data) => {
+        console.log(data);
+        players.push(data.player);
+        infoEl.innerText = `Joined room: ${data.room}`;
+        document.getElementById("roomInput").innerHTML = "";
+      });
+
+      socket.on("update_field", (newField) => {
+        field = newField;
+        drawField();
+      });
+
+      socket.on("player_assignment", (data) => {
+        playerColor = data.spieler;
+      });
+
+      socket.on("error", (data) => {
+        infoEl.innerText = "Error: " + data.message;
+      });
+
+      socket.on("waiting", (data) => {
+        infoEl.innerText = "Waiting" + data.message;
+      });
+
+      socket.on("player_left", (data) => {
+        infoEl.innerText = `Player left: ${data.sid}`;
+      });
+
+      socket.on("connect_error", (err) => {
+        console.error("CONNECT ERROR", err);
       });
     </script>
   </body>
