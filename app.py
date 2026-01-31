@@ -111,26 +111,22 @@ def join(data):
         return
 
     # add player to room
+    join_room(room)
     players.append(sid)
 
     # if first player in a room set color
     if len(players) == 1:
-        starter = random.choice(list(Spieler))
-        rooms[room]["colors"].update({sid: starter.value})
+        color = random.choice([0, 1])
+        rooms[room]["colors"][sid] = color
 
-    # check if one player is in room then set the other player the opposite color
-    if len(players) == 2:
-        player1_color = rooms[room]["colors"]
-        rooms[room]["colors"].update({sid: 0 if player1_color == 1 else 0})
-
-        join_room(room)
-        emit("joined_room", {"room": room})
-        print(f"Player {sid} joined room {room}")
+        emit("joined_room", {"room": rooms[room], "player": sid})
         print(rooms)
-    else:
-        join_room(room)
-        emit("joined_room", {"room": room, "player": sid})
-        print(f"Player {sid} joined room {room}")
+    elif len(players) == 2:
+        first_sid = players[0]
+        first_color = rooms[room]["colors"][first_sid]
+        rooms[room]["colors"][sid] = 1 - first_color
+
+        emit("joined_room", {"room": rooms[room], "player": sid}, to=sid)
         print(rooms)
 
 
@@ -147,5 +143,4 @@ def handle_place_soldaten(data):
 
 
 if __name__ == "__main__":
-    # socketio.run(app, debug=True)
     socketio.run(app, host="127.0.0.1", port=8000, debug=True)

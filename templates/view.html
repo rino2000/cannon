@@ -31,6 +31,7 @@
     <button id="joinBtn">Join Room</button>
 
     <p id="info"></p>
+    <label id="playerColor"></label>
     <table id="board"></table>
 
     <script>
@@ -40,7 +41,6 @@
 
       let room = null;
       let field = [];
-      let soldierCount = 0;
       const maxSoldiers = 15;
       let player = 0;
       let players = [];
@@ -73,15 +73,8 @@
       // --- Handle cell click ---
       function handleCellClick(x, y) {
         if (!room) return alert("Join a room first!");
-        if (soldierCount >= maxSoldiers) {
-          alert("Max 15 soldiers placed!");
-          return;
-        }
         field[x][y] = player === 0 ? "👇🏻" : "👆🏿";
-        soldierCount++;
       }
-
-      drawField();
 
       // Send update to server
       const soldiersCoords = [];
@@ -93,28 +86,18 @@
         });
       });
 
-      /*
-        if (townCoord.length > 1) {
-          alert("Max one town!");
-          return;
-        }
-
-        if (soldiersCoords.length === 0 && townCoord.length === 0) return;
-
-        socket.emit("place_soldaten", {
-          room,
-          spieler: player,
-          soldaten: soldiersCoords,
-          town: townCoord[0] || [0, 0], // placeholder if town not placed
-        });
-          */
-
       // --- Socket events ---
       socket.on("joined_room", (data) => {
         console.log(data);
-        players.push(data.player);
-        infoEl.innerText = `Joined room: ${data.room}`;
-        document.getElementById("roomInput").innerHTML = "";
+
+        field = data.room.field;
+        player = data.room.colors[data.player];
+        console.log(player);
+
+        infoEl.innerText = `Joined room: ${room}`;
+        document.getElementById("playerColor").innerHTML =
+          "You are player: " + (player === 0 ? "White" : "Black");
+        drawField();
       });
 
       socket.on("update_field", (newField) => {
