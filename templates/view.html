@@ -39,7 +39,7 @@
         transports: ["polling"],
       });
 
-      let room = null;
+      let room = "";
       let field = [];
       const maxSoldiers = 15;
       let player = 0;
@@ -72,8 +72,10 @@
 
       // --- Handle cell click ---
       function handleCellClick(x, y) {
-        if (!room) return alert("Join a room first!");
         field[x][y] = player === 0 ? "👇🏻" : "👆🏿";
+        drawField();
+        console.log(x, y);
+        socket.emit('place_soldaten', x, y, player, room);
       }
 
       // Send update to server
@@ -90,9 +92,15 @@
       socket.on("joined_room", (data) => {
         console.log(data);
 
+        if (players.length != 2) {
+          infoEl.innerHTML = "Wait for second player to join";
+        } else {
+          infoEl.innerHTML = "Start game";
+        }
+
         field = data.room.field;
         player = data.room.colors[data.player];
-        console.log(player);
+        players.push(data.player);
 
         infoEl.innerText = `Joined room: ${room}`;
         document.getElementById("playerColor").innerHTML =
@@ -100,8 +108,17 @@
         drawField();
       });
 
+      console.log(field);
+
+      socket.on("place_soldaten", (coordinate) => {
+        console.log(coordinate);
+        drawField();
+      });
+
       socket.on("update_field", (newField) => {
         field = newField;
+        console.log(newField);
+        
         drawField();
       });
 

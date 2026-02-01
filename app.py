@@ -57,15 +57,6 @@ class Soldaten(TypedDict):
     town: TownKordinaten
 
 
-def set_soldaten(soldaten: Soldaten, field: Field):
-    spieler = soldaten["spieler"]
-    coordinated = soldaten["coordinate"]
-    town_cord = soldaten.get("town")
-
-    place_soldaten(spieler, coordinated, field=field)
-    place_town(spieler, town_cord, field)
-
-
 def place_town(spieler: Spieler, coordinated: TownKordinaten, field: Field) -> Field:
     if coordinated is None:
         return
@@ -75,9 +66,14 @@ def place_town(spieler: Spieler, coordinated: TownKordinaten, field: Field) -> F
 
 
 def place_soldaten(spieler: Spieler, coordante: Koordiante, field: Field) -> Field:
-    for x, y in coordante:
-        field[x][y] = soldaten_1[0] if spieler == Spieler.WHITE else soldaten_2[0]
-    return field
+    print(coordante, type(coordante), type(coordante[0]))
+    print(type(field), field)
+    print(rooms)
+    print(rooms[field])
+    rooms[field][coordante[0]][coordante[1]] = (
+        soldaten_1[0] if spieler == Spieler.WHITE else soldaten_2[0]
+    )
+    return rooms[field]
 
 
 def check_town_count(fields: Field) -> bool:
@@ -99,48 +95,39 @@ def join(data):
     if room not in rooms:
         rooms[room] = {
             "field": np.zeros((11, 11)).astype(np.uint8).tolist(),
-            "players": [],
-            "colors": {},
+            "players": {},
         }
 
-    players = rooms[room]["players"]
+    players: dict = rooms[room].get("players")
 
-    # Check if room has space
     if len(players) >= 2:
         emit("error", {"message": "Room full!"})
         return
 
-    # add player to room
     join_room(room)
-    players.append(sid)
 
     # if first player in a room set color
-    if len(players) == 1:
+    if len(players) == 0:
         color = random.choice([0, 1])
-        rooms[room]["colors"][sid] = color
-
-        emit("joined_room", {"room": rooms[room], "player": sid})
-        print(rooms)
-    elif len(players) == 2:
-        first_sid = players[0]
-        first_color = rooms[room]["colors"][first_sid]
-        rooms[room]["colors"][sid] = 1 - first_color
-
-        emit("joined_room", {"room": rooms[room], "player": sid}, to=sid)
-        print(rooms)
+        players.update({sid: color})
+        emit(
+            "joined_room", {"room": rooms[room], "player": sid}, to=sid, broadcast=True
+        )
+    else:
+        first_sid_color = list(players.values())[0]
+        players.update({sid: 0 if first_sid_color == 1 else 1})
+        emit(
+            "joined_room", {"room": rooms[room], "player": sid}, to=sid, broadcast=True
+        )
 
 
 @socketio.on("place_soldaten")
-def handle_place_soldaten(data):
-    spieler = Spieler(data["spieler"])
-    koordinaten = [tuple(coord) for coord in data["coordinate"]]
-    town = tuple(data["town"])
-    soldaten: Soldaten = {"spieler": spieler, "coordinate": koordinaten, "town": town}
-
-    set_soldaten(soldaten, fields)
-
-    emit("update_field", fields, broadcast=True)
+def handle_place_soldaten(x, y, player, room):
+    print(x, y, player, room)
+    print(type(x), type(y), type(player), type(room))
+    place_soldaten(spieler=Spieler(player), coordante=(x, y), field=room)
 
 
 if __name__ == "__main__":
-    socketio.run(app, host="127.0.0.1", port=8000, debug=True)
+    print("Start http://127.0.0.1:8000")
+    socketio.run(app, host="127.0.0.1", port=8000)
