@@ -65,15 +65,11 @@ def place_town(spieler: Spieler, coordinated: TownKordinaten, field: Field) -> F
     return field
 
 
-def place_soldaten(spieler: Spieler, coordante: Koordiante, field: Field) -> Field:
-    print(coordante, type(coordante), type(coordante[0]))
-    print(type(field), field)
-    print(rooms)
-    print(rooms[field])
-    rooms[field][coordante[0]][coordante[1]] = (
-        soldaten_1[0] if spieler == Spieler.WHITE else soldaten_2[0]
-    )
-    return rooms[field]
+def place_soldaten(spieler: Spieler, coordante: Koordiante, room: str) -> Field:
+    x, y = coordante
+    field = rooms[room]["field"]
+    field[x][y] = soldaten_1[0] if spieler == Spieler.WHITE else soldaten_2[0]
+    return field
 
 
 def check_town_count(fields: Field) -> bool:
@@ -113,7 +109,7 @@ def join(data):
         emit(
             "joined_room", {"room": rooms[room], "player": sid}, to=sid, broadcast=True
         )
-    else:
+    elif len(players) == 1:
         first_sid_color = list(players.values())[0]
         players.update({sid: 0 if first_sid_color == 1 else 1})
         emit(
@@ -124,10 +120,10 @@ def join(data):
 @socketio.on("place_soldaten")
 def handle_place_soldaten(x, y, player, room):
     print(x, y, player, room)
-    print(type(x), type(y), type(player), type(room))
-    place_soldaten(spieler=Spieler(player), coordante=(x, y), field=room)
+    field = place_soldaten(spieler=Spieler(player), coordante=(x, y), room=room)
+    emit("update_field", field, room=room)
 
 
 if __name__ == "__main__":
     print("Start http://127.0.0.1:8000")
-    socketio.run(app, host="127.0.0.1", port=8000)
+    socketio.run(app, host="127.0.0.1", port=8000, debug=True)

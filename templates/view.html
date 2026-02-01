@@ -53,21 +53,47 @@
         const roomInput = document.getElementById("roomInput").value.trim();
         if (!roomInput) return alert("Enter a room name!");
         room = roomInput;
+        roomInput.innerHTML = "";
         socket.emit("join_room", { room });
       });
 
+      const letters = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"];
+
       function drawField() {
         boardEl.innerHTML = "";
+
+        // Draw grid rows
         field.forEach((row, i) => {
           const tr = document.createElement("tr");
+
+          // Row number (0–9)
+          const label = document.createElement("td");
+          label.textContent = i;
+          label.style.fontWeight = "bold";
+          tr.appendChild(label);
+
           row.forEach((cell, j) => {
             const td = document.createElement("td");
-            td.innerHTML = cell;
+            td.textContent = cell === 0 ? "" : cell;
             td.addEventListener("click", () => handleCellClick(i, j));
             tr.appendChild(td);
           });
+
           boardEl.appendChild(tr);
         });
+
+        // Bottom letter labels
+        const footer = document.createElement("tr");
+        footer.appendChild(document.createElement("td")); // corner
+
+        letters.forEach((letter) => {
+          const td = document.createElement("td");
+          td.textContent = letter;
+          td.style.fontWeight = "bold";
+          footer.appendChild(td);
+        });
+
+        boardEl.appendChild(footer);
       }
 
       // --- Handle cell click ---
@@ -75,7 +101,7 @@
         field[x][y] = player === 0 ? "👇🏻" : "👆🏿";
         drawField();
         console.log(x, y);
-        socket.emit('place_soldaten', x, y, player, room);
+        socket.emit("place_soldaten", x, y, player, room);
       }
 
       // Send update to server
@@ -92,15 +118,11 @@
       socket.on("joined_room", (data) => {
         console.log(data);
 
-        if (players.length != 2) {
-          infoEl.innerHTML = "Wait for second player to join";
-        } else {
-          infoEl.innerHTML = "Start game";
-        }
-
         field = data.room.field;
-        player = data.room.colors[data.player];
-        players.push(data.player);
+
+        playerColor = data.room.players[data.player];
+        player = playerColor;
+        players.push(data.room.player);
 
         infoEl.innerText = `Joined room: ${room}`;
         document.getElementById("playerColor").innerHTML =
@@ -108,17 +130,12 @@
         drawField();
       });
 
-      console.log(field);
-
-      socket.on("place_soldaten", (coordinate) => {
-        console.log(coordinate);
-        drawField();
+      socket.emit("place_soldaten", (x, y, player, room) => {
+        console.log(x, y, player, room);
       });
 
       socket.on("update_field", (newField) => {
         field = newField;
-        console.log(newField);
-        
         drawField();
       });
 
