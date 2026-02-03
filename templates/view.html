@@ -36,11 +36,6 @@
     <table id="board"></table>
 
     <script>
-      window.onload = function () {
-        playerPlaceSoldatenLeft.innerHTML =
-          "You have 15 Soldaten left to place";
-      };
-
       const socket = io("http://127.0.0.1:8000", {
         transports: ["polling"],
       });
@@ -151,8 +146,10 @@
       });
 
       socket.on("joined_room", (data) => {
-        field = data.room.field;
+        playerPlaceSoldatenLeft.innerHTML =
+          "You have 15 Soldaten left to place";
 
+        field = data.room.field;
         playerColor = data.room.players[data.player];
         player = playerColor;
         players.push(data.room.player);
