@@ -31,22 +31,34 @@
     <button id="joinBtn">Join Room</button>
 
     <p id="info"></p>
-    <label id="playerColor"></label>
+    <p id="playerColor"></p>
+    <p id="playerPlaceSoldatenLeft"></p>
     <table id="board"></table>
 
     <script>
+      window.onload = function () {
+        playerPlaceSoldatenLeft.innerHTML =
+          "You have 15 Soldaten left to place";
+      };
+
       const socket = io("http://127.0.0.1:8000", {
         transports: ["polling"],
       });
 
       let room = "";
       let field = [];
-      const maxSoldiers = 15;
+      let maxSoldiersWhite = 15;
+      let maxSoldiersBlack = 15;
       let player = 0;
       let players = [];
+      const soldatenWhite = "👇🏻";
+      const soldatenBlack = "👆🏿";
 
       const boardEl = document.getElementById("board");
       const infoEl = document.getElementById("info");
+      const playerPlaceSoldatenLeft = document.getElementById(
+        "playerPlaceSoldatenLeft",
+      );
 
       // Join Room with roomname
       document.getElementById("joinBtn").addEventListener("click", () => {
@@ -82,9 +94,8 @@
           boardEl.appendChild(tr);
         });
 
-        // Bottom letter labels
         const footer = document.createElement("tr");
-        footer.appendChild(document.createElement("td")); // corner
+        footer.appendChild(document.createElement("td"));
 
         letters.forEach((letter) => {
           const td = document.createElement("td");
@@ -96,15 +107,40 @@
         boardEl.appendChild(footer);
       }
 
-      // --- Handle cell click ---
+      function soldiersLeft() {
+        if (maxSoldiersBlack === 0 || maxSoldiersWhite === 0) {
+          playerPlaceSoldatenLeft.innerHTML = "Max Soldaten geplaced";
+          return;
+        }
+
+        const isWhite = player === 0;
+        const soldiersLeft = isWhite ? --maxSoldiersWhite : --maxSoldiersBlack;
+
+        playerPlaceSoldatenLeft.innerHTML = `You have ${soldiersLeft} Soldaten left to place`;
+      }
+
+      const soldatenPlacedSameCoordinate = (x, y, soldat) =>
+        field[x][y] === soldat;
+
       function handleCellClick(x, y) {
-        field[x][y] = player === 0 ? "👇🏻" : "👆🏿";
+        if (
+          soldatenPlacedSameCoordinate(
+            x,
+            y,
+            player === 0 ? soldatenWhite : soldatenBlack,
+          ) ||
+          maxSoldiersBlack === 0 ||
+          maxSoldiersWhite === 0
+        ) {
+          return;
+        }
+
+        field[x][y] = player === 0 ? soldatenWhite : soldatenBlack;
         drawField();
-        console.log(x, y);
+        soldiersLeft();
         socket.emit("place_soldaten", x, y, player, room);
       }
 
-      // Send update to server
       const soldiersCoords = [];
       const townCoord = [];
       field.forEach((row, i) => {
@@ -114,10 +150,7 @@
         });
       });
 
-      // --- Socket events ---
       socket.on("joined_room", (data) => {
-        console.log(data);
-
         field = data.room.field;
 
         playerColor = data.room.players[data.player];
@@ -128,10 +161,6 @@
         document.getElementById("playerColor").innerHTML =
           "You are player: " + (player === 0 ? "White" : "Black");
         drawField();
-      });
-
-      socket.emit("place_soldaten", (x, y, player, room) => {
-        console.log(x, y, player, room);
       });
 
       socket.on("update_field", (newField) => {
@@ -145,10 +174,6 @@
 
       socket.on("error", (data) => {
         infoEl.innerText = "Error: " + data.message;
-      });
-
-      socket.on("waiting", (data) => {
-        infoEl.innerText = "Waiting" + data.message;
       });
 
       socket.on("player_left", (data) => {

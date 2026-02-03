@@ -125,5 +125,4 @@ def handle_place_soldaten(x, y, player, room):
 
 
 if __name__ == "__main__":
-    print("Start http://127.0.0.1:8000")
     socketio.run(app, host="127.0.0.1", port=8000, debug=True)
