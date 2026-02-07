@@ -57,10 +57,9 @@ class Soldaten(TypedDict):
     town: TownKordinaten
 
 
-def place_town(spieler: Spieler, coordinated: TownKordinaten, field: Field) -> Field:
-    if coordinated is None:
-        return
-    x, y = coordinated
+def place_town(spieler: Spieler, coordante: TownKordinaten, room: str) -> Field:
+    x, y = coordante
+    field = rooms[room]["field"]
     field[x][y] = town_1 if spieler == Spieler.WHITE else town_2
     return field
 
@@ -113,7 +112,10 @@ def join(data):
         first_sid_color = list(players.values())[0]
         players.update({sid: 0 if first_sid_color == 1 else 1})
         emit(
-            "joined_room", {"room": rooms[room], "player": sid}, to=sid, broadcast=True
+            "joined_room",
+            {"room": rooms[room], "player": sid},
+            to=sid,
+            broadcast=True,
         )
 
 
@@ -121,7 +123,25 @@ def join(data):
 def handle_place_soldaten(x, y, player, room):
     print(x, y, player, room)
     field = place_soldaten(spieler=Spieler(player), coordante=(x, y), room=room)
+    print(rooms[room]["field"])
     emit("update_field", field, room=room)
+
+
+@socketio.on("place_town")
+def handle_place_town(x, y, player, room):
+    print(x, y, player, room)
+    field = place_town(spieler=Spieler(player), coordante=(x, y), room=room)
+    print(rooms[room]["field"])
+    emit("update_field", field, room=room)
+
+
+# @socketio.on("leave")
+# def player_leave(data):
+#     print(f"leave room ==== {data}")
+#     player = request.sid
+#     room = data["room"]
+#     leave_room(room=room, sid=player)
+#     send(player + " has left the room.", to=room)
 
 
 if __name__ == "__main__":
