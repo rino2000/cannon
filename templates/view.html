@@ -25,7 +25,9 @@
     </style>
   </head>
   <body>
-    <h1>Cannon</h1>
+    <h1>
+      Cannon Soldaten White 👇🏻 Soldaten Black 👆🏿 Town White 🏠 Town Black 🏠
+    </h1>
 
     <label>Room name: <input type="text" id="roomInput" /></label>
     <button id="joinBtn">Join Room</button>
@@ -42,9 +44,8 @@
 
       let room = "";
       let field = [];
-      let players = [];
-      let maxSoldiers = 15;
-      let player = 0; // 0 = White 1 = Black
+      let soldiers_left;
+      let player = 1; // 1 = White 2 = Black
       const soldatenWhite = "👇🏻";
       const soldatenBlack = "👆🏿";
       let maxTowns = 1;
@@ -53,9 +54,6 @@
 
       const boardEl = document.getElementById("board");
       const infoEl = document.getElementById("info");
-      const playerPlaceSoldatenLeft = document.getElementById(
-        "playerPlaceSoldatenLeft",
-      );
 
       // Join Room with roomname
       document.getElementById("joinBtn").addEventListener("click", () => {
@@ -104,97 +102,40 @@
         boardEl.appendChild(footer);
       }
 
-      function soldiersLeft() {
-        if (room == null) return;
-
-        if (maxSoldiers === 0) {
-          playerPlaceSoldatenLeft.innerHTML = "Max Soldaten geplaced";
-          setTimeout(() => {
-            playerPlaceSoldatenLeft.innerHTML = "Now place Town";
-          }, 1000);
-          return;
-        }
-
-        playerPlaceSoldatenLeft.innerHTML = `You have ${maxSoldiers} Soldaten left to place`;
-      }
-
-      function placedSameCoord(x, y) {
-        //check if town or soldat placed same coordinate
-        soldat = player === 0 ? soldatenWhite : soldatenBlack;
-        town = player === 0 ? townWhite : townBlack;
-        return field[x][y] === soldat || field[x][y] === town;
-      }
-
       function placeSoldaten(x, y) {
-        field[x][y] = player === 0 ? soldatenWhite : soldatenBlack;
-        --maxSoldiers;
-        drawField();
-        soldiersLeft();
-        socket.emit("place_soldaten", x, y, player, room);
+        socket.emit("place_soldaten", x, y, room);
       }
 
       function placeTown(x, y) {
-        //after all soldiers are placed then place town
-        if (maxSoldiers === 0 && maxTowns === 1) {
-          field[x][y] = player === 0 ? townWhite : townBlack;
-          --maxTowns;
-          drawField();
-          socket.emit("place_town", x, y, player, room);
-        } else {
-          return;
-        }
+        socket.emit("place_town", x, y, player, room);
       }
 
       function handleCellClick(x, y) {
-        if (placedSameCoord(x, y)) {
-          return;
-        }
-
-        if (maxSoldiers > 0) {
-          placeSoldaten(x, y);
-        } else {
-          placeTown(x, y);
-          return;
-        }
+        placeSoldaten(x, y);
+        // placeTown(x, y);
       }
 
-      // const soldiersCoords = [];
-      // const townCoord = [];
-      // field.forEach((row, i) => {
-      //   row.forEach((cell, j) => {
-      //     if (cell === soldatenWhite || cell === soldatenBlack)
-      //       soldiersCoords.push([i, j]);
-      //     if (cell === townWhite || cell === townBlack) townCoord.push([i, j]);
-      //   });
-      // });
-
       socket.on("joined_room", (data) => {
-        playerPlaceSoldatenLeft.innerHTML =
-          "You have 15 Soldaten left to place";
+        console.log(data);
 
         field = data.room.field;
-        playerColor = data.room.players[data.player];
-        player = playerColor;
-        players.push(data.room.player);
+        player = data.room.players[data.player];
 
-        infoEl.innerText = `Joined room: ${room}`;
+        console.log(player);
+
         document.getElementById("playerColor").innerHTML =
-          "You are player: " + (player === 0 ? "White" : "Black");
+          "You are player: " + (player === 1 ? "White" : "Black");
         drawField();
+      });
+
+      socket.on("info", (data) => {
+        infoEl.innerHTML = data.message;
+        console.log(data.message);
       });
 
       socket.on("update_field", (newField) => {
         field = newField;
         drawField();
-      });
-
-      socket.on("disconnect", (reason) => {
-        console.log(reason);
-        infoEl.innerText = `${player === 0 ? "White" : "Black"} has left the game`;
-      });
-
-      socket.on("connect_error", (err) => {
-        console.error("CONNECT ERROR", err);
       });
     </script>
   </body>
