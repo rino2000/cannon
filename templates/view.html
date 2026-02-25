@@ -121,14 +121,14 @@
         field = data.room.field;
         player = data.room.players[data.player];
 
-        console.log(player);
-
         document.getElementById("playerColor").innerHTML =
           "You are player: " + (player === 1 ? "White" : "Black");
         drawField();
       });
 
       socket.on("info", (data) => {
+        console.log(data);
+
         infoEl.innerHTML = data.message;
         console.log(data.message);
       });

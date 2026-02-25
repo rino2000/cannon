@@ -1,6 +1,5 @@
-import pprint
 import random
-from enum import Enum
+from enum import IntEnum
 from typing import List, Tuple
 
 import numpy as np
@@ -15,6 +14,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", sync_mode="threading")
 x_legende: List[int] = list(range(10))
 y_legende: List[chr] = list(map(chr, range(ord("a"), ord("l"))))
 
+EMPTY = 0  # Empty Koordinate point
 WHITE = 1  # 👇🏻
 BLACK = 2  # 👆🏿
 TOWN_WHITE = 3  # 🏠
@@ -25,7 +25,7 @@ MAX_PLAYERS_IN_ROOM = 2
 rooms: dict[str, dict] = {}
 
 
-class Spieler(Enum):
+class Spieler(IntEnum):
     WHITE = 1
     BLACK = 2
 
@@ -37,65 +37,73 @@ Koordiante = Tuple[int, int]
 def place_town(spieler: Spieler, coordante: Koordiante, room: str) -> Field:
     x, y = coordante
     field: Field = rooms[room].get("field")
-    field[x][y] = TOWN_WHITE if spieler == WHITE else TOWN_BLACK
+    field[x][y] = TOWN_WHITE if spieler == Spieler.WHITE else TOWN_BLACK
     return field
+
+
+def soldiers_count(player: Spieler, field: Field) -> int:
+    return sum(
+        row.count(WHITE if player == Spieler.WHITE else Spieler.BLACK) for row in field
+    )
 
 
 def place_soldaten(player: Spieler, coordante: Koordiante, room: str, sid: str):
     field: Field = rooms[room].get("field")
-
-    white_placed_all_soliders: bool = (
-        True if sum(row.count(WHITE) for row in field) == MAX_SOLDIERS else False
-    )
-
-    black_placed_all_soldirs: bool = (
-        True if sum(row.count(BLACK) for row in field) == MAX_SOLDIERS else False
-    )
-
-    soldiers_count_black: int = sum(row.count(BLACK) for row in field)
-    soldiers_count_white: int = sum(row.count(WHITE) for row in field)
-
     x, y = coordante
 
-    # wenn white and black alle soldaten placed haben info message
-    if white_placed_all_soliders and black_placed_all_soldirs:
-        emit("info", {"message": "Max soldiers placed"}, room=room, broadcast=True)
+    if field[x][y] != EMPTY:
+        emit("info", {"message": "Koordinate is already used"}, to=sid)
         return field
 
-    # wenn auf dem coord schon ein soldat geplaced ist dann info
-    if field[x][y] != 0:
-        emit("info", {"message": "Soldat is already placed"}, to=sid)
-        return field
+    match player:
+        case Spieler.WHITE:
+            if white_placed_all(field):
+                emit("info", {"message": "Wait for black"}, to=sid)
+                return field
 
-    if player == BLACK and not white_placed_all_soliders:
-        emit("info", {"message": "Wait until White placed all 15 soldiers!"}, to=sid)
-        return field
-    elif player == BLACK and white_placed_all_soliders:
-        emit(
-            "info",
-            {
-                "message": f"You have {MAX_SOLDIERS - soldiers_count_black} Soldaten left to place"
-            },
-            to=sid,
-        )
-        field[x][y] = BLACK
-        return field
-    elif player == WHITE and white_placed_all_soliders:
-        return field
-    elif player == WHITE:
-        emit(
-            "info",
-            {
-                "message": f"You have {MAX_SOLDIERS - soldiers_count_white} Soldaten left to place"
-            },
-            to=sid,
-        )
-        field[x][y] = WHITE
-        return field
+            # place soldaten
+            field[x][y] = WHITE
+            soldiers_count_white: int = soldiers_count(player, field)
+
+            if soldiers_count_white <= MAX_SOLDIERS:
+                if soldiers_count_white == MAX_SOLDIERS:
+                    emit("info", {"message": "Now place Town"}, to=sid)
+                    return field
+
+                emit(
+                    "info",
+                    {"message": f"Soldaten left {MAX_SOLDIERS - soldiers_count_white}"},
+                    to=sid,
+                )
+                return field
+            else:
+                field: Field = place_town(player, (x, y), room)
+                emit("info", {"message": "Wait for black"}, to=sid)
+                return field
+
+        # case Spieler.BLACK:
+        #     if not white_placed_all_soliders:
+        #         emit("info", {"message": "Wait for white"})
+        #         return field
+        #     return field
+        # case _:
+        #     emit("info", {"message": "Error"}, to=sid, broadcast=True)
 
 
 def room_is_full(players: dict[str, int]) -> bool:
-    return True if len(players) >= MAX_PLAYERS_IN_ROOM else False
+    return len(players) >= MAX_PLAYERS_IN_ROOM
+
+
+def white_placed_all(field: Field):
+    soliders_count: bool = sum(row.count(WHITE) for row in field) == MAX_SOLDIERS
+    town_count: bool = sum(row.count(TOWN_WHITE) for row in field) == 1
+    return soliders_count and town_count
+
+
+def black_placed_all(field: Field) -> bool:
+    soliders_count: bool = sum(row.count(BLACK) for row in field) == MAX_SOLDIERS
+    town_count: bool = sum(row.count(TOWN_BLACK) for row in field) == 1
+    return soliders_count and town_count
 
 
 def create_player(sid: str, room: str) -> None:
@@ -111,15 +119,17 @@ def create_player(sid: str, room: str) -> None:
         color = random.choice([WHITE, BLACK])
         players |= {sid: color}
         emit("joined_room", data, to=sid)
+        emit("info", {"message": f"Soldaten left {MAX_SOLDIERS}"}, to=sid)
     elif len(players) == 1:
         first_sid_color = list(rooms[room].get("players").values())[0]
         players |= {sid: BLACK if first_sid_color == WHITE else WHITE}
         emit("joined_room", data, to=sid)
+        emit("info", {"message": f"Soldaten left {MAX_SOLDIERS}"}, to=sid)
 
 
 @app.route("/")
 def hello_world():
-    return render_template("view.html", data=np.zeros((11, 11), dtype=object))
+    return render_template("view.html", data=np.zeros((11, 11), dtype=np.uint8))
 
 
 @socketio.on("join_room")
@@ -153,7 +163,6 @@ def handle_place_soldaten(x: int, y: int, room: str):
 @socketio.on("place_town")
 def handle_place_town(x, y, player, room):
     field: Field = place_town(spieler=player, coordante=(x, y), room=room)
-    pprint.pprint(rooms[room]["field"])
     emit("update_field", field, room=room)
 
 
