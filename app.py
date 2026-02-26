@@ -49,12 +49,18 @@ def place_soldaten(player: Spieler, coordante: Koordiante, room: str, sid: str):
     field: Field = rooms[room].get("field")
     x, y = coordante
 
+    black_sid: str = [p for p in rooms[room].get("players") if p is not sid][0]
+
     if field[x][y] != EMPTY:
         emit("info", {"message": "Koordinate is already used"}, to=sid)
         return field
 
     match player:
         case Spieler.WHITE:
+            if not room_is_full(rooms[room].get("players")):
+                emit("info", {"message": "Wait for black to join"}, to=sid)
+                return field
+
             if white_placed_all(field):
                 emit("info", {"message": "Wait for black"}, to=sid)
                 return field
@@ -77,6 +83,7 @@ def place_soldaten(player: Spieler, coordante: Koordiante, room: str, sid: str):
             else:
                 field: Field = place_town(player, (x, y), room)
                 emit("info", {"message": "Wait for black"}, to=sid)
+                emit("info", {"message": "Start placing soldiers"}, to=black_sid)
                 return field
 
         case Spieler.BLACK:
@@ -104,7 +111,7 @@ def place_soldaten(player: Spieler, coordante: Koordiante, room: str, sid: str):
                 return field
             else:
                 field: Field = place_town(player, (x, y), room)
-                emit("info", {"message": "Game start"}, to=sid, broadcast=True)
+                emit("info", {"message": "Game start"}, to=room, broadcast=True)
                 return field
         case _:
             emit("info", {"message": "Error"}, to=sid, broadcast=True)
