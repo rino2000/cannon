@@ -42,9 +42,7 @@ def place_town(spieler: Spieler, coordante: Koordiante, room: str) -> Field:
 
 
 def soldiers_count(player: Spieler, field: Field) -> int:
-    return sum(
-        row.count(WHITE if player == Spieler.WHITE else Spieler.BLACK) for row in field
-    )
+    return sum(row.count(WHITE if player == Spieler.WHITE else BLACK) for row in field)
 
 
 def place_soldaten(player: Spieler, coordante: Koordiante, room: str, sid: str):
@@ -81,13 +79,35 @@ def place_soldaten(player: Spieler, coordante: Koordiante, room: str, sid: str):
                 emit("info", {"message": "Wait for black"}, to=sid)
                 return field
 
-        # case Spieler.BLACK:
-        #     if not white_placed_all_soliders:
-        #         emit("info", {"message": "Wait for white"})
-        #         return field
-        #     return field
-        # case _:
-        #     emit("info", {"message": "Error"}, to=sid, broadcast=True)
+        case Spieler.BLACK:
+            if black_placed_all(field):
+                emit("info", {"message": "Start game"})
+                return field
+
+            if not white_placed_all(field):
+                emit("info", {"message": "Wait for white"})
+                return field
+
+            field[x][y] = BLACK
+            soldiers_count_black: int = soldiers_count(player, field)
+
+            if soldiers_count_black <= MAX_SOLDIERS:
+                if soldiers_count_black == MAX_SOLDIERS:
+                    emit("info", {"message": "Now place Town"}, to=sid)
+                    return field
+
+                emit(
+                    "info",
+                    {"message": f"Soldaten left {MAX_SOLDIERS - soldiers_count_black}"},
+                    to=sid,
+                )
+                return field
+            else:
+                field: Field = place_town(player, (x, y), room)
+                emit("info", {"message": "Game start"}, to=sid, broadcast=True)
+                return field
+        case _:
+            emit("info", {"message": "Error"}, to=sid, broadcast=True)
 
 
 def room_is_full(players: dict[str, int]) -> bool:
