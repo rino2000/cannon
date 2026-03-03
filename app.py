@@ -1,6 +1,6 @@
 import random
 from enum import IntEnum
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 from flask import Flask, render_template, request
@@ -9,7 +9,16 @@ from flask_socketio import SocketIO, emit, join_room
 app = Flask(__name__)
 
 app.config["SECRET_KEY"] = "secret!"
-socketio = SocketIO(app, cors_allowed_origins="*", sync_mode="threading")
+
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    sync_mode="threading",
+    logger=True,
+    engineio_logger=True,
+    ping_timeout=100,
+    ping_interval=40,
+)
 
 x_legende: List[int] = list(range(10))
 y_legende: List[chr] = list(map(chr, range(ord("a"), ord("l"))))
@@ -22,12 +31,18 @@ TOWN_BLACK = 4  # 🏡
 MAX_SOLDIERS = 15
 MAX_PLAYERS_IN_ROOM = 2
 
-rooms: dict[str, dict] = {}
+rooms: Dict[str, Dict] = {}
 
 
 class Spieler(IntEnum):
     WHITE = 1
     BLACK = 2
+
+
+class Mode(IntEnum):
+    GERDEAUS = 0
+    DIAGONAL_LINKS = 1
+    DIAGONAL_RECHTS = 2
 
 
 Field = List[List[int]]
@@ -55,12 +70,12 @@ def place_soldaten(player: Spieler, coordante: Koordiante, room: str, sid: str):
         emit("info", {"message": "Koordinate is already used"}, to=sid)
         return field
 
+    if white_placed_all(field) and black_placed_all(field):
+        emit("info", {"message": "Start game"}, to=sid)
+        return field
+
     match player:
         case Spieler.WHITE:
-            if not room_is_full(rooms[room].get("players")):
-                emit("info", {"message": "Wait for black to join"}, to=sid)
-                return field
-
             if white_placed_all(field):
                 emit("info", {"message": "Wait for black"}, to=sid)
                 return field
@@ -87,12 +102,8 @@ def place_soldaten(player: Spieler, coordante: Koordiante, room: str, sid: str):
                 return field
 
         case Spieler.BLACK:
-            if black_placed_all(field):
-                emit("info", {"message": "Start game"})
-                return field
-
             if not white_placed_all(field):
-                emit("info", {"message": "Wait for white"})
+                emit("info", {"message": "Wait for white"}, to=sid)
                 return field
 
             field[x][y] = BLACK
@@ -111,13 +122,67 @@ def place_soldaten(player: Spieler, coordante: Koordiante, room: str, sid: str):
                 return field
             else:
                 field: Field = place_town(player, (x, y), room)
-                emit("info", {"message": "Game start"}, to=room, broadcast=True)
+                emit("info", {"message": "Start game"}, to=room, broadcast=True)
                 return field
         case _:
             emit("info", {"message": "Error"}, to=sid, broadcast=True)
 
 
-def room_is_full(players: dict[str, int]) -> bool:
+def move_soldat(
+    koordinate: Koordiante, spieler: Spieler, mode: Mode, field: Field
+) -> Field:
+    x, y = koordinate
+
+    soldat = WHITE if spieler == Spieler.WHITE else BLACK
+
+    if field[x][y] == TOWN_BLACK or TOWN_WHITE:
+        emit("info", {"message": "Haus kann nicht bewegt werden"})
+        return
+
+    if not field[x][y] == soldat:
+        emit("info", {"message": f"Koordinate {x, y} ist kein soldat"})
+        return
+
+    """
+    wenn weiss
+    [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0], 1,5 -> runter x = x + 1, y = y
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 1,5 -> diagonal links x = x + 1,y = y - 1
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 1,5 -> diagonal rechts x = x + 1,y = y + 1
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]
+    """
+    moves = [
+        (x + 1 if spieler == Spieler.WHITE else x - 1, y),  # einen schritt gerade
+        (x + 1 if spieler == Spieler.WHITE else x - 1, y - 1),  # diagonal link
+        (x + 1 if spieler == Spieler.WHITE else x - 1, y + 1),  # diagonal rechts
+    ]
+
+    new_koordinate = moves[mode]
+
+    new_x, new_y = new_koordinate
+
+    if field[new_x][new_y] is not EMPTY:
+        emit(
+            "info",
+            {
+                "message": "Ausgewahltes feld ist nicht Leer, waehle ein anderes feld aus"
+            },
+        )
+        return
+
+    field[new_x][new_y] = soldat
+    field[x][y] = EMPTY
+
+    return field
+
+
+def room_is_full(players: Dict[str, int]) -> bool:
     return len(players) >= MAX_PLAYERS_IN_ROOM
 
 
@@ -134,7 +199,7 @@ def black_placed_all(field: Field) -> bool:
 
 
 def create_player(sid: str, room: str) -> None:
-    players: dict[str, int] = rooms[room].get("players")
+    players: Dict[str, int] = rooms[room].get("players")
 
     data = {"room": rooms[room], "player": sid, "soldiers_left": MAX_SOLDIERS}
 
@@ -181,16 +246,29 @@ def join(data):
 
 @socketio.on("place_soldaten")
 def handle_place_soldaten(x: int, y: int, room: str):
+
     sid: str = request.sid
-    player: int = rooms[room].get("players")[sid]
+    players: Dict[str, int] = rooms[room].get("players")
+    player: str = rooms[room].get("players")[sid]
+
+    if not room_is_full(players):
+        emit("info", {"message": "Wait for second player "}, to=sid)
+        return
+
     field: Field = place_soldaten(player, coordante=(x, y), room=room, sid=sid)
+
+    move_soldat(
+        koordinate=(x, y), spieler=player, mode=Mode.DIAGONAL_LINKS, field=field
+    )
+
     emit("update_field", field, room=room)
 
 
-@socketio.on("place_town")
-def handle_place_town(x, y, player, room):
-    field: Field = place_town(spieler=player, coordante=(x, y), room=room)
-    emit("update_field", field, room=room)
+@socketio.on("disconnect")
+def handle_disconnect():
+    sid: str = request.sid
+    emit("info", {"message": "Disconnect"}, to=sid)
+    print("Client disconnected")
 
 
 if __name__ == "__main__":

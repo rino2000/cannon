@@ -106,13 +106,8 @@
         socket.emit("place_soldaten", x, y, room);
       }
 
-      function placeTown(x, y) {
-        socket.emit("place_town", x, y, player, room);
-      }
-
       function handleCellClick(x, y) {
         placeSoldaten(x, y);
-        // placeTown(x, y);
       }
 
       socket.on("joined_room", (data) => {
