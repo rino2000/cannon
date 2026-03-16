@@ -1,3 +1,4 @@
+import pprint
 import random
 from enum import IntEnum
 from typing import Dict, List, Tuple
@@ -13,15 +14,12 @@ app.config["SECRET_KEY"] = "secret!"
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    sync_mode="threading",
+    sync_move="threading",
     logger=True,
     engineio_logger=True,
     ping_timeout=100,
     ping_interval=40,
 )
-
-x_legende: List[int] = list(range(10))
-y_legende: List[chr] = list(map(chr, range(ord("a"), ord("l"))))
 
 EMPTY = 0  # Empty Koordinate point
 WHITE = 1  # 👇🏻
@@ -30,8 +28,13 @@ TOWN_WHITE = 3  # 🏠
 TOWN_BLACK = 4  # 🏡
 MAX_SOLDIERS = 15
 MAX_PLAYERS_IN_ROOM = 2
+BOARD_SIZE = 10  # 10x10
+FIELD_SIZE = BOARD_SIZE + 1  # 11x11 mit Labels
 
 rooms: Dict[str, Dict] = {}
+
+x_legende: List[int] = list(range(BOARD_SIZE))
+y_legende: List[chr] = list(map(chr, range(ord("a"), ord("l"))))
 
 
 class Spieler(IntEnum):
@@ -39,10 +42,9 @@ class Spieler(IntEnum):
     BLACK = 2
 
 
-class Mode(IntEnum):
-    GERDEAUS = 0
-    DIAGONAL_LINKS = 1
-    DIAGONAL_RECHTS = 2
+class GameState(IntEnum):
+    PLACE_SOLDATEN = 0
+    MOVE_SOLDATEN = 1
 
 
 Field = List[List[int]]
@@ -71,7 +73,12 @@ def place_soldaten(player: Spieler, coordante: Koordiante, room: str, sid: str):
         return field
 
     if white_placed_all(field) and black_placed_all(field):
-        emit("info", {"message": "Start game"}, to=sid)
+        emit(
+            "info",
+            {"message": "Start game", "gameState": GameState.MOVE_SOLDATEN},
+            to=room,
+            broadcast=True,
+        )
         return field
 
     match player:
@@ -129,55 +136,15 @@ def place_soldaten(player: Spieler, coordante: Koordiante, room: str, sid: str):
 
 
 def move_soldat(
-    koordinate: Koordiante, spieler: Spieler, mode: Mode, field: Field
+    start: Koordiante, ziel: Koordiante, spieler: Spieler, room: str
 ) -> Field:
-    x, y = koordinate
-
+    oldX, oldY = start
+    newX, newY = ziel
+    field: Field = rooms[room].get("field")
     soldat = WHITE if spieler == Spieler.WHITE else BLACK
 
-    if field[x][y] == TOWN_BLACK or TOWN_WHITE:
-        emit("info", {"message": "Haus kann nicht bewegt werden"})
-        return
-
-    if not field[x][y] == soldat:
-        emit("info", {"message": f"Koordinate {x, y} ist kein soldat"})
-        return
-
-    """
-    wenn weiss
-    [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0], 1,5 -> runter x = x + 1, y = y
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 1,5 -> diagonal links x = x + 1,y = y - 1
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 1,5 -> diagonal rechts x = x + 1,y = y + 1
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]
-    """
-    moves = [
-        (x + 1 if spieler == Spieler.WHITE else x - 1, y),  # einen schritt gerade
-        (x + 1 if spieler == Spieler.WHITE else x - 1, y - 1),  # diagonal link
-        (x + 1 if spieler == Spieler.WHITE else x - 1, y + 1),  # diagonal rechts
-    ]
-
-    new_koordinate = moves[mode]
-
-    new_x, new_y = new_koordinate
-
-    if field[new_x][new_y] is not EMPTY:
-        emit(
-            "info",
-            {
-                "message": "Ausgewahltes feld ist nicht Leer, waehle ein anderes feld aus"
-            },
-        )
-        return
-
-    field[new_x][new_y] = soldat
-    field[x][y] = EMPTY
+    field[newX][newY] = soldat
+    field[oldX][oldY] = EMPTY
 
     return field
 
@@ -196,6 +163,43 @@ def black_placed_all(field: Field) -> bool:
     soliders_count: bool = sum(row.count(BLACK) for row in field) == MAX_SOLDIERS
     town_count: bool = sum(row.count(TOWN_BLACK) for row in field) == 1
     return soliders_count and town_count
+
+
+def placement_complete(room: str) -> bool:
+    field: Field = rooms[room].get("field")
+    white_done = white_placed_all(field)
+    black_done = black_placed_all(field)
+    return white_done and black_done
+
+
+def can_capture_side(
+    koordiante: Koordiante, spieler: Spieler, room: str
+) -> Tuple[bool, bool]:
+    field: Field = rooms.get(room).get("field")
+    x, y = koordiante
+
+    left_ok = y - 1 >= 0
+    right_ok = y + 1 < 10
+
+    can_left = False
+    can_right = False
+
+    if left_ok:
+        left_piece = field[x][y - 1]
+        is_other = (
+            False if left_piece == (WHITE if spieler == WHITE else BLACK) else True
+        )
+        can_left = (
+            True if left_piece is not (TOWN_BLACK or TOWN_WHITE) and is_other else False
+        )
+
+    if right_ok:
+        right_piece = field[x][y + 1]
+        is_other = (
+            False if right_piece == (WHITE if spieler == WHITE else BLACK) else True
+        )
+        can_right = True if right_piece is not (TOWN_BLACK or TOWN_WHITE) else False
+    return can_left, can_right
 
 
 def create_player(sid: str, room: str) -> None:
@@ -221,7 +225,9 @@ def create_player(sid: str, room: str) -> None:
 
 @app.route("/")
 def hello_world():
-    return render_template("view.html", data=np.zeros((11, 11), dtype=np.uint8))
+    return render_template(
+        "view.html", data=np.zeros((FIELD_SIZE, FIELD_SIZE), dtype=np.uint8)
+    )
 
 
 @socketio.on("join_room")
@@ -233,10 +239,9 @@ def join(data):
         emit("error", {"message": "Room name required"}, to=sid)
         return
 
-    # Create room if it doesn't exist
     if room not in rooms:
         rooms[room] = {
-            "field": np.zeros((11, 11), dtype=object).tolist(),
+            "field": np.zeros((FIELD_SIZE, FIELD_SIZE), dtype=np.uint8).tolist(),
             "players": {},  # {sid: color}
         }
 
@@ -246,10 +251,18 @@ def join(data):
 
 @socketio.on("place_soldaten")
 def handle_place_soldaten(x: int, y: int, room: str):
-
     sid: str = request.sid
     players: Dict[str, int] = rooms[room].get("players")
     player: str = rooms[room].get("players")[sid]
+
+    if placement_complete(room):
+        emit(
+            "info",
+            {"message": "Start game", "gameState": GameState.MOVE_SOLDATEN},
+            to=room,
+            broadcast=True,
+        )
+        return
 
     if not room_is_full(players):
         emit("info", {"message": "Wait for second player "}, to=sid)
@@ -257,11 +270,17 @@ def handle_place_soldaten(x: int, y: int, room: str):
 
     field: Field = place_soldaten(player, coordante=(x, y), room=room, sid=sid)
 
-    move_soldat(
-        koordinate=(x, y), spieler=player, mode=Mode.DIAGONAL_LINKS, field=field
-    )
-
     emit("update_field", field, room=room)
+
+
+@socketio.on("move_soldaten")
+def handle_move_soldaten(
+    startX: int, startY: int, zielX: int, zielY: int, spieler: Spieler, room: str
+):
+    field: Field = move_soldat(
+        start=(startX, startY), ziel=(zielX, zielY), spieler=spieler, room=room
+    )
+    emit("update_field", field, to=request.sid, broadcast=True)
 
 
 @socketio.on("disconnect")
@@ -271,5 +290,125 @@ def handle_disconnect():
     print("Client disconnected")
 
 
+def get_soldat_and_direction(player: Spieler):
+    soldat = WHITE if player == Spieler.WHITE else BLACK
+    direction = 1 if player == Spieler.WHITE else -1
+    return soldat, direction
+
+
+def is_coordinate_valide(start: Koordiante, end: Koordiante) -> bool:
+    oldX, oldY = start
+    newX, newY = end
+    start_is_valide = (0 <= oldX < FIELD_SIZE) and (0 <= oldY < FIELD_SIZE)
+    end_is_valide = (0 <= newX < FIELD_SIZE) and (0 <= newY < FIELD_SIZE)
+    return start_is_valide and end_is_valide
+
+
+def move_forward(start: Koordiante, end: Koordiante, spieler: Spieler, field: Field):
+    if not is_coordinate_valide(start, end):
+        print("coordiantye sind falsch")
+        return None
+
+    soldat, direction = get_soldat_and_direction(spieler)
+
+    oldX, oldY = start
+    newX, newY = end
+
+    if field[oldX][oldY] != soldat:
+        print("Nicht der eigenee Soldat")
+        return None
+
+    if (newX - oldX) != direction or (newY - oldY) > 1:
+        print("Invalid move direction")
+        return None
+
+    if field[newX][newY] != EMPTY:
+        print("Target coord is not empty")
+        return None
+
+    field[oldX][oldY] = EMPTY
+    field[newX][newY] = soldat
+
+    return field
+
+
+def move_diagonally(start: Koordiante, end: Koordiante, spieler: Spieler, field: Field):
+    if not is_coordinate_valide(start, end):
+        print("invalid koordinatae")
+        return None
+
+    oldX, oldY = start
+    newX, newY = end
+    soldat, direction = get_soldat_and_direction(spieler)
+
+    if field[oldX][oldY] != soldat:
+        print("nicht dein soldat")
+        return None
+
+    dx = newX - oldX
+
+    if not (dx == direction):
+        print("invalider direction")
+        return None
+
+    if field[newX][newY] != EMPTY:
+        print("zielkoordinate ist nicht leer")
+        return None
+
+    field[oldX][oldY] = EMPTY
+    field[newX][newY] = soldat
+
+    return field
+
+
+def t() -> None:
+    # from collections import Counter
+    # c = Counter(chain(*field))[Spieler.WHITE]
+    # print(c)
+    room = "test"
+
+    rooms[room] = {
+        "field": np.zeros((FIELD_SIZE, FIELD_SIZE), dtype=np.uint8).tolist(),
+        "players": {"white": Spieler.WHITE, "black": Spieler.BLACK},  # {sid: color}
+    }
+
+    field = rooms["test"].get("field")
+
+    x, y, placed_soldiers = 0, 0, 0
+    while placed_soldiers < MAX_SOLDIERS:
+        field[x][y] = WHITE
+        y += 1
+        if y >= 10:
+            y = 0
+            x += 1
+        placed_soldiers += 1
+
+    field[x][y] = TOWN_WHITE
+
+    x, y, placed_soldiers = 2, 2, 0
+    while placed_soldiers < MAX_SOLDIERS:
+        field[x][y] = BLACK
+        y += 1
+        if y >= 10:
+            y = 0
+            x += 1
+        placed_soldiers += 1
+
+    field[x][y] = TOWN_BLACK
+
+    pprint.pprint(field)
+    print("")
+    start = (0, 9)
+    end = (1, 10)
+
+    # move_soldat(whiteSoldier, newWhiteSoldier, Spieler.WHITE, room)
+    # move_diagonally(start, end, Spieler.WHITE, field)
+    # move_diagonally((2, 9), (1, 10), Spieler.BLACK, field)
+    # move_forward(whiteSoldier, newWhiteSoldier, Spieler.WHITE, field)
+
+    pprint.pprint(field)
+
+
 if __name__ == "__main__":
-    socketio.run(app, host="127.0.0.1", port=8000, debug=True)
+    t()
+    # socketio.run(app, host="127.0.0.1", port=8000, debug=True)

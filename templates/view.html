@@ -42,6 +42,13 @@
         transports: ["polling"],
       });
 
+      let gameState = 0; // 0 = Place Soldaten, 1 = Move Soldaten
+      const moves = Object.freeze({
+        GERDEAUS: 0,
+        DIAGONAL_LINKS: 1,
+        DIAGONAL_RECHTS: 2,
+      });
+
       let room = "";
       let field = [];
       let soldiers_left;
@@ -51,6 +58,7 @@
       let maxTowns = 1;
       const townWhite = "🏠";
       const townBlack = "🏡";
+      let selectedPiece = null; // {x, y} des ausgewählten Soldaten
 
       const boardEl = document.getElementById("board");
       const infoEl = document.getElementById("info");
@@ -107,7 +115,37 @@
       }
 
       function handleCellClick(x, y) {
-        placeSoldaten(x, y);
+        if (gameState === 1) {
+          handleMoveSelection(x, y);
+          console.log("Game state updated to MOVE_SOLDATEN:", gameState);
+        } else if (gameState === 0) {
+          placeSoldaten(x, y);
+        }
+      }
+
+      function handleMoveSelection(x, y) {
+        console.log("gamestate in handelmoveselection" + gameState);
+
+        const cellValue = field[x][y];
+        console.log(field[x][y]);
+
+        if (selectedPiece === null) {
+          selectedPiece = { x, y };
+          console.log(selectedPiece);
+          infoEl.innerHTML = `Stein bei ${letters[y]}${x} ausgewählt.`;
+        }
+
+        socket.emit(
+          "move_soldaten",
+          selectedPiece.x,
+          selectedPiece.y,
+          x,
+          y,
+          player,
+          room,
+        );
+
+        selectedPiece = null;
       }
 
       socket.on("joined_room", (data) => {
@@ -122,10 +160,12 @@
       });
 
       socket.on("info", (data) => {
-        console.log(data);
+        if (data.gameState === 1) {
+          gameState = 1;
+          console.log("gamestate" + gameState);
+        }
 
         infoEl.innerHTML = data.message;
-        console.log(data.message);
       });
 
       socket.on("update_field", (newField) => {
