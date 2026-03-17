@@ -1,6 +1,6 @@
-import pprint
 import random
 from enum import IntEnum
+from pprint import pprint
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -173,9 +173,8 @@ def placement_complete(room: str) -> bool:
 
 
 def can_capture_side(
-    koordiante: Koordiante, spieler: Spieler, room: str
+    koordiante: Koordiante, spieler: Spieler, field: Field
 ) -> Tuple[bool, bool]:
-    field: Field = rooms.get(room).get("field")
     x, y = koordiante
 
     left_ok = y - 1 >= 0
@@ -340,6 +339,7 @@ def move_diagonally(start: Koordiante, end: Koordiante, spieler: Spieler, field:
     oldX, oldY = start
     newX, newY = end
     soldat, direction = get_soldat_and_direction(spieler)
+    opposite_soldat = BLACK if soldat == WHITE else WHITE
 
     if field[oldX][oldY] != soldat:
         print("nicht dein soldat")
@@ -354,6 +354,9 @@ def move_diagonally(start: Koordiante, end: Koordiante, spieler: Spieler, field:
     if field[newX][newY] != EMPTY:
         print("zielkoordinate ist nicht leer")
         return None
+
+    if field[newX][newY] == opposite_soldat:
+        print(f"captures soldat {'BLACK' if opposite_soldat == BLACK else 'WHITE'}")
 
     field[oldX][oldY] = EMPTY
     field[newX][newY] = soldat
@@ -374,39 +377,43 @@ def t() -> None:
 
     field = rooms["test"].get("field")
 
-    x, y, placed_soldiers = 0, 0, 0
-    while placed_soldiers < MAX_SOLDIERS:
-        field[x][y] = WHITE
-        y += 1
-        if y >= 10:
-            y = 0
-            x += 1
-        placed_soldiers += 1
+    # x, y, placed_soldiers = 0, 0, 0
+    # while placed_soldiers < MAX_SOLDIERS:
+    #     field[x][y] = WHITE
+    #     y += 1
+    #     if y >= 10:
+    #         y = 0
+    #         x += 1
+    #     placed_soldiers += 1
 
-    field[x][y] = TOWN_WHITE
+    # field[x][y] = TOWN_WHITE
 
-    x, y, placed_soldiers = 2, 2, 0
-    while placed_soldiers < MAX_SOLDIERS:
-        field[x][y] = BLACK
-        y += 1
-        if y >= 10:
-            y = 0
-            x += 1
-        placed_soldiers += 1
+    # x, y, placed_soldiers = 2, 2, 0
+    # while placed_soldiers < MAX_SOLDIERS:
+    #     field[x][y] = BLACK
+    #     y += 1
+    #     if y >= 10:
+    #         y = 0
+    #         x += 1
+    #     placed_soldiers += 1
 
-    field[x][y] = TOWN_BLACK
+    # field[x][y] = TOWN_BLACK
 
-    pprint.pprint(field)
+    field[0][0] = WHITE
+    field[0][1] = WHITE
+    field[1][1] = BLACK
+
+    pprint(field)
     print("")
-    start = (0, 9)
-    end = (1, 10)
+    start = (0, 0)
+    end = (1, 1)
 
-    # move_soldat(whiteSoldier, newWhiteSoldier, Spieler.WHITE, room)
+    # move_soldat(start, end, Spieler.WHITE, room)
     # move_diagonally(start, end, Spieler.WHITE, field)
     # move_diagonally((2, 9), (1, 10), Spieler.BLACK, field)
     # move_forward(whiteSoldier, newWhiteSoldier, Spieler.WHITE, field)
 
-    pprint.pprint(field)
+    pprint(field)
 
 
 if __name__ == "__main__":
