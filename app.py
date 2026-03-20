@@ -364,6 +364,100 @@ def move_diagonally(start: Koordiante, end: Koordiante, spieler: Spieler, field:
     return field
 
 
+def move_if_free(start, end, spieler, field):
+    if not is_coordinate_valide(start, end):
+        print("flasche koordinaten")
+        return None
+
+    soldat, _ = get_soldat_and_direction(spieler)
+
+    startX, startY = start
+    endX, endY = end
+
+    if field[endX][endY] == EMPTY:
+        field[endX][endY] = soldat
+        field[startX][startY] = EMPTY
+        return field
+    else:
+        print("ziel koordinate ist nicht frei")
+        return None
+
+
+def is_soldier_threatened(start: Koordiante, spieler: Spieler, field: Field):
+    startX, startY = start
+
+    soldat, direction = get_soldat_and_direction(spieler)
+    opposite_soldat = BLACK if soldat == WHITE else WHITE
+
+    check_above = field[startX + direction][startY] == opposite_soldat
+    check_under = field[startX - direction][startY] == opposite_soldat
+    check_left = field[startX][startY - direction] == opposite_soldat
+    check_right = field[startX][startY + direction] == opposite_soldat
+
+    check_diagonally: bool = (
+        field[startX - direction][startY - direction] == opposite_soldat
+        or field[startX + direction][startY + direction] == opposite_soldat
+        or field[startX - direction][startY + direction] == opposite_soldat
+        or field[startX + direction][startY - direction] == opposite_soldat
+    )
+
+    return check_above or check_under or check_left or check_right or check_diagonally
+
+
+def check_solider_is_not_blocked(start, spieler, field) -> bool:
+    startX, startY = start
+    soldat, direction = get_soldat_and_direction(spieler)
+    opposite_soldat = BLACK if soldat == WHITE else WHITE
+
+    directions = [
+        (startX + -direction, startY),  # x achse
+        (startX + -direction * 2, startY),  # x achse * 2
+        (startX - direction, startY - direction),  # diagonal
+        (startX - direction * -2, startY - direction * -2),  # diagonal * 2
+        (startX + direction, startY + direction),  # diagonal
+        (startX + direction * 2, startY + direction * 2),  # diagonal * 2
+    ]
+
+    # TODO checken ob in dem weg opposite soldaten sind -> dann false
+    return True
+
+
+def move_diagonally_or_straight_backwards(start, end, spieler, field):
+    if not is_soldier_threatened(start, end, spieler, field):
+        print("dein soldat ist nicht in gefahr")
+        return None
+
+    startX, startY = start
+    endX, endY = end
+
+    soldat, direction = get_soldat_and_direction(spieler)
+
+    if field[startX][startY] != soldat:
+        print("Nicht dein soldat")
+        return None
+
+    dx = endX - startX
+    dy = endY - startY
+
+    expected_dx = -2 * direction
+
+    if not (dx == expected_dx) and (dy == 0 or abs(dy) == 2):
+        print("direction ist nicht 2 felder")
+        return None
+
+    if field[endX][endY] != EMPTY:
+        print("end ziel koordinate ist nicht leer")
+        return None
+
+    if not check_solider_is_not_blocked():
+        field[startX][startY] = EMPTY
+        field[endX][endY] = soldat
+        return field
+    else:
+        print("move blockiert durch einen soldat im weg")
+        return None
+
+
 def t() -> None:
     # from collections import Counter
     # c = Counter(chain(*field))[Spieler.WHITE]
@@ -399,16 +493,16 @@ def t() -> None:
 
     # field[x][y] = TOWN_BLACK
 
-    field[0][0] = WHITE
-    field[0][1] = WHITE
-    field[1][1] = BLACK
+    startX, startY = 5, 5
+    field[startX][startY] = BLACK
+    field[6][5] = WHITE
 
     pprint(field)
     print("")
     start = (0, 0)
     end = (1, 1)
 
-    # move_soldat(start, end, Spieler.WHITE, room)
+    print(is_soldier_threatened((startX, startY), Spieler.BLACK, field))
     # move_diagonally(start, end, Spieler.WHITE, field)
     # move_diagonally((2, 9), (1, 10), Spieler.BLACK, field)
     # move_forward(whiteSoldier, newWhiteSoldier, Spieler.WHITE, field)
