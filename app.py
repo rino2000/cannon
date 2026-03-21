@@ -51,17 +51,18 @@ class Room:
         checkY = 0 <= y < FIELD_SIZE
         return checkX and checkY
 
-    def place_soldat(self, x: int, y: int, sid: str):
+    def place_object(self, x: int, y: int, sid: str):
         if not self._validate_coordinate(x, y):
             print(f"error koordinate {x, y} ist ausserhalb")
             return None
 
         spieler = self._get_player(sid)
-        self._check_soldier_placement(x, y, spieler)
 
         soldat = WHITE if spieler == Spieler.WHITE else BLACK
-        self.board[x][y] = soldat
-        return self.board
+
+        if self._check_soldier_placement(x, y, spieler):
+            self.board[x][y] = soldat
+            return self.board
 
     def _count_objects(self, spieler: Spieler) -> Tuple[int, int]:
         color = WHITE if spieler == Spieler.WHITE else BLACK
@@ -69,6 +70,12 @@ class Room:
         soldiers = c[WHITE if color == WHITE else BLACK]
         town = c[TOWN_WHITE if color == WHITE else TOWN_BLACK]
         return (soldiers, town)
+
+    def _all_objects_placed(self) -> bool:
+        return all(
+            self._count_objects(player) == (MAX_SOLDIERS, 1)
+            for player in [Spieler.WHITE, Spieler.BLACK]
+        )
 
     def _white_placed_all(self) -> bool:
         soldiers, towns = self._count_objects(Spieler.WHITE)
@@ -80,13 +87,17 @@ class Room:
     def _is_room_full(self) -> bool:
         return len(self.players) >= MAX_PLAYERS_IN_ROOM
 
-    def _check_soldier_placement(self, x: int, y: int, spieler: Spieler):
+    def _check_soldier_placement(self, x: int, y: int, spieler: Spieler) -> bool:
         if not self._is_room_full():
             print("warte auf den anderen gegner")
             return False
 
         if not self._white_placed_all():
             print("white soll zu erst alles placen")
+            return False
+
+        if self._all_objects_placed():
+            print("alle objecte sind geplaced")
             return False
 
         match spieler:
@@ -116,14 +127,17 @@ class Room:
 
 rooms: Room = {}
 
-
 if __name__ == "__main__":
     r = Room()
     rooms[r.name] = r
 
     k = {"x": 0, "y": 0, "sid": "testuuid"}
 
-    r.place_soldat(**k)
-    r.place_soldat(**k | {"x": 1})
+    r.place_object(**k)
+    r.place_object(**k | {"x": 1})
+    r.place_object(**k | {"y": 2})
+    r.place_object(**k | {"y": 2})
+
+    print(r._all_objects_placed())
 
     pprint(r.board)
