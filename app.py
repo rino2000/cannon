@@ -39,26 +39,28 @@ class Room:
     name: str = "test"
     board: Field = field(
         default_factory=lambda: np.zeros(
-            (FIELD_SIZE, FIELD_SIZE), dtype=np.uint8
+            (BOARD_SIZE, BOARD_SIZE), dtype=np.uint8
         ).tolist()
     )
     players: Dict[str, Spieler] = field(default_factory=lambda: {})  # {sid:color}
     gameState: GameState = GameState.PLACE_SOLDATEN
 
-    def join_room(self, name: str, sid: str) -> Optional[Spieler]:
+    def __post__init__(self):
+        rooms.update({self.name, self})
+
+    def join_room(self, sid: str) -> Optional[Spieler]:
         if self._is_room_full():
             print("room is allready full")
             return None
-
-        free = set(self.players.values())
 
         if not self.players:
             color = random.choice(list(Spieler))
             self.players |= {sid: color}
             return color
 
-        self.players |= {sid: free.symmetric_difference(set(list(Spieler)))}
-        return None
+        left = set(Spieler) - set(self.players.values())
+        color = left.pop()
+        self.players |= {sid: color}
 
     def _validate_coordinate(self, x: int, y: int) -> bool:
         checkX = 0 <= x < FIELD_SIZE
@@ -66,24 +68,18 @@ class Room:
         return checkX and checkY
 
     def place_object(self, x: int, y: int, sid: str) -> Optional[Field]:
-        if not self._is_room_full():
-            print("warte auf den gengner")
-            return None
-
-        if not self._validate_coordinate(x, y):
-            print(f"error koordinate {x, y} ist ausserhalb")
-            return None
-
         spieler = self._get_player(sid)
-        print(f"spieler == {spieler}")
+        self._check_placement(x, y, spieler)
 
-        if self._check_soldier_placement(x, y, spieler):
-            soldat = WHITE if spieler == Spieler.WHITE else BLACK
-            self.board[x][y] = soldat
-            return self.board
-        else:
-            print("error beim placen")
-            return None
+    def _place_soldier(self, x: int, y: int, spieler) -> Field:
+        self.board[x][y] = WHITE if spieler == Spieler.WHITE else BLACK
+        return self.board
+
+    def _place_town(self, x: int, y: int, spieler: Spieler) -> Field:
+        town = TOWN_WHITE if spieler == Spieler.WHITE else TOWN_BLACK
+        self.board[x][y] = town
+        print("town placed")
+        return self.board
 
     def _count_objects(self, spieler: Spieler) -> Tuple[int, int]:
         color = WHITE if spieler == Spieler.WHITE else BLACK
@@ -108,58 +104,93 @@ class Room:
     def _is_room_full(self) -> bool:
         return len(self.players) >= MAX_PLAYERS_IN_ROOM
 
-    def _check_soldier_placement(self, x: int, y: int, spieler: Spieler) -> bool:
+    def _check_placement(self, x: int, y: int, spieler: Spieler) -> Optional[Field]:
         if not self._is_room_full():
             print("warte auf den anderen gegner")
-            return False
+            return None
+
+        if not self._validate_coordinate(x, y):
+            print(f"error koordinate {x, y} ist ausserhalb")
+            return None
 
         if self._all_objects_placed():
             print("alle objecte sind geplaced")
-            return False
+            return None
+
+        soldiers, _ = self._count_objects(spieler)
 
         match spieler:
             case Spieler.WHITE:
+                if self._white_placed_all():
+                    print("wait for white")
+                    return None
+                if (
+                    soldiers == MAX_SOLDIERS
+                    and (x == 0)
+                    and (y in range(1, FIELD_SIZE - 1))
+                ):
+                    print("now place town")
+                    return self._place_town(x, y, spieler)
+
                 if (x == 0 and y in range(FIELD_SIZE)) or (x in range(4) and y == 0):
                     print(f"white darf nicht placen {x, y}")
-                    return False
+                    return None
                 else:
-                    return True
+                    return self._place_soldier(x, y, spieler)
 
             case Spieler.BLACK:
                 if not self._white_placed_all():
                     print("white soll zu erst alles placen")
-                    return False
+                    return None
+
+                if (
+                    (soldiers == MAX_SOLDIERS)
+                    and (x == BOARD_SIZE - 1)
+                    and (y in range(1, BOARD_SIZE - 1))
+                ):
+                    print("now place town")
+                    return self._place_town(x, y, spieler)
 
                 if (x == FIELD_SIZE and y in range(FIELD_SIZE)) or (
                     y in range(4) and x == FIELD_SIZE
                 ):
                     print("black darf nicht placen")
-                    return False
+                    return None
                 else:
-                    return True
-
-            case _:
-                print("error case")
-                return False
+                    return self._place_soldier(x, y, spieler)
 
 
 rooms: Dict[str, Room] = {}
 
 if __name__ == "__main__":
     r = Room()
-    r.join_room(r.name, "asdsa")
-    r.join_room(r.name, "adasdj")
+    r.join_room("a")
+    r.join_room("b")
     rooms[r.name] = r
 
-    white_sid: str = next(
-        (sid for sid, col in r.players.items() if col == Spieler.WHITE), None
-    )
+    white_sid: str = next((k for k, v in r.players.items() if v == Spieler.WHITE))
+    black_sid: str = next((k for k, v in r.players.items() if v == Spieler.BLACK))
 
-    k = {"x": 1, "y": 1, "sid": white_sid}
+    print(r.players)
+    print(white_sid)
 
-    r.place_object(**k)
-    # r.place_object(**k | {"x": 5})
-    # r.place_object(**k | {"y": 4})
-    # r.place_object(**k | {"y": 8})
+    w = {"sid": white_sid}
+    b = {"sid": black_sid}
 
+    for y in range(1, BOARD_SIZE, 2):
+        for x in range(1, 4):
+            r.place_object(**w | {"x": x, "y": y})
+
+    r._place_town(0, 4, Spieler.WHITE)
+
+    for yy in range(0, BOARD_SIZE, 2):
+        for xx in range(6, 9):
+            r.place_object(**b | {"x": xx, "y": yy})
+
+    r._place_town(BOARD_SIZE - 1, 7, Spieler.BLACK)
+
+    print(r._count_objects(Spieler.BLACK), r._count_objects(Spieler.WHITE))
+
+    print(f"all objects placed? {r._all_objects_placed()}")
     pprint(r.board)
+    rooms.pop(r.name, None)
