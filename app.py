@@ -1,8 +1,9 @@
+import random
 from dataclasses import dataclass, field
 from enum import IntEnum
 from itertools import chain
 from pprint import pprint
-from typing import Counter, Dict, List, Tuple
+from typing import Counter, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -41,28 +42,48 @@ class Room:
             (FIELD_SIZE, FIELD_SIZE), dtype=np.uint8
         ).tolist()
     )
-    players: Dict[str, Spieler] = field(
-        default_factory=lambda: {"testSid": Spieler.WHITE}
-    )
+    players: Dict[str, Spieler] = field(default_factory=lambda: {})  # {sid:color}
     gameState: GameState = GameState.PLACE_SOLDATEN
+
+    def join_room(self, name: str, sid: str) -> Optional[Spieler]:
+        if self._is_room_full():
+            print("room is allready full")
+            return None
+
+        free = set(self.players.values())
+
+        if not self.players:
+            color = random.choice(list(Spieler))
+            self.players |= {sid: color}
+            return color
+
+        self.players |= {sid: free.symmetric_difference(set(list(Spieler)))}
+        return None
 
     def _validate_coordinate(self, x: int, y: int) -> bool:
         checkX = 0 <= x < FIELD_SIZE
         checkY = 0 <= y < FIELD_SIZE
         return checkX and checkY
 
-    def place_object(self, x: int, y: int, sid: str):
+    def place_object(self, x: int, y: int, sid: str) -> Optional[Field]:
+        if not self._is_room_full():
+            print("warte auf den gengner")
+            return None
+
         if not self._validate_coordinate(x, y):
             print(f"error koordinate {x, y} ist ausserhalb")
             return None
 
         spieler = self._get_player(sid)
-
-        soldat = WHITE if spieler == Spieler.WHITE else BLACK
+        print(f"spieler == {spieler}")
 
         if self._check_soldier_placement(x, y, spieler):
+            soldat = WHITE if spieler == Spieler.WHITE else BLACK
             self.board[x][y] = soldat
             return self.board
+        else:
+            print("error beim placen")
+            return None
 
     def _count_objects(self, spieler: Spieler) -> Tuple[int, int]:
         color = WHITE if spieler == Spieler.WHITE else BLACK
@@ -92,28 +113,25 @@ class Room:
             print("warte auf den anderen gegner")
             return False
 
-        if not self._white_placed_all():
-            print("white soll zu erst alles placen")
-            return False
-
         if self._all_objects_placed():
             print("alle objecte sind geplaced")
             return False
 
         match spieler:
             case Spieler.WHITE:
-                if x == 0 and y in range(FIELD_SIZE) or x in range(4) and y == 0:
+                if (x == 0 and y in range(FIELD_SIZE)) or (x in range(4) and y == 0):
                     print(f"white darf nicht placen {x, y}")
                     return False
                 else:
                     return True
 
             case Spieler.BLACK:
-                if (
-                    x == FIELD_SIZE
-                    and y in range(FIELD_SIZE)
-                    or y in range(4)
-                    and x == FIELD_SIZE
+                if not self._white_placed_all():
+                    print("white soll zu erst alles placen")
+                    return False
+
+                if (x == FIELD_SIZE and y in range(FIELD_SIZE)) or (
+                    y in range(4) and x == FIELD_SIZE
                 ):
                     print("black darf nicht placen")
                     return False
@@ -125,19 +143,23 @@ class Room:
                 return False
 
 
-rooms: Room = {}
+rooms: Dict[str, Room] = {}
 
 if __name__ == "__main__":
     r = Room()
+    r.join_room(r.name, "asdsa")
+    r.join_room(r.name, "adasdj")
     rooms[r.name] = r
 
-    k = {"x": 0, "y": 0, "sid": "testuuid"}
+    white_sid: str = next(
+        (sid for sid, col in r.players.items() if col == Spieler.WHITE), None
+    )
+
+    k = {"x": 1, "y": 1, "sid": white_sid}
 
     r.place_object(**k)
-    r.place_object(**k | {"x": 1})
-    r.place_object(**k | {"y": 2})
-    r.place_object(**k | {"y": 2})
-
-    print(r._all_objects_placed())
+    # r.place_object(**k | {"x": 5})
+    # r.place_object(**k | {"y": 4})
+    # r.place_object(**k | {"y": 8})
 
     pprint(r.board)
