@@ -80,7 +80,8 @@ class Room:
     def _place_town(self, x: int, y: int, spieler: Spieler) -> Field:
         town = TOWN_WHITE if spieler == Spieler.WHITE else TOWN_BLACK
         self.board[x][y] = town
-        self.gameState = GameState.MOVE_SOLDATEN if spieler == Spieler.BLACK else None
+        if self._all_objects_placed():
+            self.gameState = GameState.MOVE_SOLDATEN
         return self.board
 
     def _count_objects(self, spieler: Spieler) -> Tuple[int, int]:
@@ -150,6 +151,51 @@ class Room:
                 return None
             return self._place_town(x, y, spieler)
 
+    def move_soldier(
+        self, startX: int, startY: int, endX: int, endY: int, sid: str
+    ) -> Optional[Field]:
+        if self.gameState != GameState.MOVE_SOLDATEN:
+            print("nicht in move soldaten gamestate")
+            return None
+
+        spieler = self._get_player(sid)
+
+        if not (
+            self._validate_coordinate(startX, startY)
+            and self._validate_coordinate(endX, endY)
+        ):
+            print(f"Koordinaten sind nicht valide {startX, startY} {endX, endY}")
+            return None
+
+        soldier = WHITE if spieler == Spieler.WHITE else BLACK
+
+        if self.board[startX][startY] in [TOWN_BLACK, TOWN_WHITE]:
+            print("du darfst die stadt nicht bewegen")
+            return None
+
+        if self.board[startX][startY] != soldier:
+            print("nicht dein soldat")
+            return None
+
+        if self.board[endX][endY] != EMPTY:
+            print(f"ziel koordinate {endX, endY} ist nicht frei")
+            return None
+
+        direction = 1 if spieler == Spieler.WHITE else -1
+
+        if endX != startX + direction:
+            print("soldat darf nur 1 schritt vorraus und diagonal rechts, links")
+            return None
+
+        if abs(endY - startY) > 1:
+            print("soldat darf nur 1 schritt in allen richtungen")
+            return None
+
+        self.board[startX][startY] = EMPTY
+        self.board[endX][endY] = soldier
+
+        return self.board
+
 
 rooms: Dict[str, Room] = {}
 
@@ -178,6 +224,32 @@ if __name__ == "__main__":
     r.place_object(**b | {"x": 9, "y": 7})
 
     print(r._count_objects(Spieler.WHITE), r._count_objects(Spieler.BLACK))
+    pprint(r.board)
+    print()
+
+    # allowed white
+    # r.move_soldier(1, 1, 2, 2, white_sid)  # diagonal rechts
+    # r.move_soldier(1, 1, 2, 0, white_sid)  # diagonal links
+    # r.move_soldier(3, 1, 4, 1, white_sid)  # gerade aus
+
+    # error moves
+    # r.move_soldier(3, 1, 5, 1, white_sid)  # mehr als 1+ gerade aus
+    # r.move_soldier(1, 1, 1, 0, white_sid)  # links
+    # r.move_soldier(1, 1, 1, 2, white_sid)  # rechts
+    # r.move_soldier(0, 4, 0, 5, white_sid)  # versucht stadt moven
+    # r.move_soldier(1, 1, 0, 1, white_sid)  # 1 hinten
+
+    # allowed black
+    # r.move_soldier(6, 0, 5, 1, black_sid)  # diagonal rechts
+    # r.move_soldier(6, 2, 5, 1, black_sid)  # diagonal links
+    # r.move_soldier(6, 0, 5, 0, black_sid)  # gerade aus
+
+    # error moves
+    # r.move_soldier(6, 0, 4, 0, black_sid)  # mehr als 1+ gerade aus
+    # r.move_soldier(6, 2, 6, 1, black_sid)  # links
+    # r.move_soldier(6, 0, 6, 1, black_sid)  # rechts
+    # r.move_soldier(9, 7, 9, 10, black_sid)  # versucht stadt moven
+    # r.move_soldier(8, 0, 9, 0, black_sid)  # 1 hinten
 
     pprint(r.board)
     print(f"Gamestate == {r.gameState.name}")
