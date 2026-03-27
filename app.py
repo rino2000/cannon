@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from itertools import chain
 from pprint import pprint
+from threading import Lock
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -16,11 +17,6 @@ TOWN_BLACK = 4  # 🏡
 MAX_SOLDIERS = 15
 MAX_PLAYERS_IN_ROOM = 2
 BOARD_SIZE = 10  # 10x10
-FIELD_SIZE = BOARD_SIZE + 1  # 11x11 mit Labels
-
-
-x_legende: List[int] = list(range(BOARD_SIZE))
-y_legende: List[chr] = list(map(chr, range(ord("a"), ord("l"))))
 
 Field = List[List[int]]
 
@@ -45,6 +41,9 @@ class Room:
     )
     players: Dict[str, Spieler] = field(default_factory=lambda: {})  # {sid:color}
     gameState: GameState = GameState.PLACE_SOLDATEN
+    white_captured: int = 0
+    black_captured: int = 0
+    _capture_lock: Lock = field(default_factory=Lock)
 
     def __post_init__(self):
         rooms[self.name] = self
@@ -65,8 +64,8 @@ class Room:
         return color
 
     def _validate_coordinate(self, x: int, y: int) -> bool:
-        checkX = 0 <= x < FIELD_SIZE
-        checkY = 0 <= y < FIELD_SIZE
+        checkX = 0 <= x < BOARD_SIZE
+        checkY = 0 <= y < BOARD_SIZE
         return checkX and checkY
 
     def place_object(self, x: int, y: int, sid: str) -> Optional[Field]:
@@ -177,6 +176,11 @@ class Room:
             print("nicht dein soldat")
             return None
 
+        captures = self._check_capture_soldier(startX, startY, spieler)
+
+        if (endX, endY) in captures:
+            return self._capture(startX, startY, endX, endY, spieler)
+
         if self.board[endX][endY] != EMPTY:
             print(f"ziel koordinate {endX, endY} ist nicht frei")
             return None
@@ -193,6 +197,62 @@ class Room:
 
         self.board[startX][startY] = EMPTY
         self.board[endX][endY] = soldier
+        return self.board
+
+    def _check_capture_soldier(self, x: int, y: int, spieler: Spieler):
+
+        enemy_color = WHITE if spieler == Spieler.BLACK else BLACK
+        direction = 1 if spieler == Spieler.WHITE else -1
+
+        fields = [
+            (x, y - 1),  # left
+            (x, y + 1),  # right
+            (x + direction, y),  # above
+            (x + direction, y - 1),  # diagonally left
+            (x + direction, y + 1),  # diagonally right
+        ]
+
+        possible = list(filter(lambda x: self.board[x[0]][x[1]] == enemy_color, fields))
+        check = all(map(lambda x: self._validate_coordinate(x[0], x[1]), possible))
+
+        return possible if check else ()
+
+    def _capture_soldier_count(self, spieler: Spieler) -> None:
+        with self._capture_lock:
+            if spieler == Spieler.WHITE:
+                self.white_captured += 1
+            else:
+                self.black_captured += 1
+
+    def _capture(
+        self, startX: int, startY: int, endX: int, endY: int, spieler: Spieler
+    ) -> Optional[Field]:
+        if not self._validate_coordinate(
+            startX, startY
+        ) and not self._validate_coordinate(endX, endY):
+            print("coordinaten sind nicht valide")
+            return None
+
+        soldier = WHITE if spieler == Spieler.WHITE else BLACK
+
+        capturable = self._check_capture_soldier(startX, startY, spieler)
+
+        if (endX, endY) not in capturable:
+            print("Kein soldier auf zu capturen")
+            return None
+
+        enemy_soldier = WHITE if spieler == Spieler.BLACK else BLACK
+
+        if self.board[endX][endY] == enemy_soldier:
+            self._capture_soldier_count(
+                Spieler.WHITE if spieler == Spieler.BLACK else Spieler.BLACK
+            )
+
+            self.board[startX][startY] = EMPTY
+            self.board[endX][endY] = soldier
+
+            print(f"soldat captured {endX, endY}")
+            return self.board
 
         return self.board
 
@@ -251,6 +311,23 @@ if __name__ == "__main__":
     # r.move_soldier(9, 7, 9, 10, black_sid)  # versucht stadt moven
     # r.move_soldier(8, 0, 9, 0, black_sid)  # 1 hinten
 
-    pprint(r.board)
     print(f"Gamestate == {r.gameState.name}")
+
+    # capture
+    black_coord = {"x": 4, "y": 1, "spieler": Spieler.BLACK}
+    r._place_soldier(**black_coord)  # place black
+
+    # r._place_soldier(3, 0, Spieler.WHITE)  # diagonally left
+    # r._place_soldier(3, 2, Spieler.WHITE)  # diagonally right
+    # r._place_soldier(4, 2, Spieler.WHITE)  # right
+    # r._place_soldier(4, 0, Spieler.WHITE)  # left
+
+    pprint(r.board)
+
+    # print(r._check_capture_soldier(**black_coord))
+
+    pprint(r.move_soldier(4, 1, 3, 1, black_sid))
+
+    print(r.black_captured, r.white_captured)
+
     rooms.pop(r.name, None)
