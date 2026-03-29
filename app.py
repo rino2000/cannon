@@ -72,7 +72,7 @@ class Room:
         spieler = self._get_player(sid)
         return self._check_placement(x, y, spieler)
 
-    def _place_soldier(self, x: int, y: int, spieler) -> Field:
+    def _place_soldier(self, x: int, y: int, spieler: Spieler) -> Field:
         self.board[x][y] = WHITE if spieler == Spieler.WHITE else BLACK
         return self.board
 
@@ -176,6 +176,16 @@ class Room:
             print("nicht dein soldat")
             return None
 
+        t = self._check_threat(startX, startY, spieler)
+        print(t)
+
+        if self._check_threat(startX, startY, spieler):
+            if (endX, endY) in self._all_possible_thread_moves(startX, startY, spieler):
+                print(f"thread move {endX, endY} moved")
+                self.board[startX][startY] = EMPTY
+                self.board[endX][endY] = soldier
+                return self.board
+
         captures = self._check_capture_soldier(startX, startY, spieler)
 
         if (endX, endY) in captures:
@@ -256,6 +266,62 @@ class Room:
 
         return self.board
 
+    def _check_threat(self, x: int, y: int, spieler: Spieler) -> bool:
+        direction = 1 if spieler == Spieler.WHITE else -1
+        opponent = WHITE if spieler == Spieler.BLACK else BLACK
+
+        fields = [
+            (x, y - 1),  # left
+            (x, y + 1),  # right
+            (x + direction, y),  # above
+            (x + direction, y - 1),  # diagonally right
+            (x + direction, y + 1),  # diagonally left
+        ]
+
+        return any(map(lambda x: self.board[x[0]][x[1]] == opponent, fields))
+
+    def _check_interception(
+        self, startX: int, startY: int, spieler: Spieler
+    ) -> List[Tuple[int, int]]:
+        """return List of all interception koordinates that are calculated (endX,endY)"""
+
+        direction = 1 if spieler == Spieler.WHITE else -1
+
+        check_iterception = [
+            (startX - 1 * direction, startY),  # back
+            (startX - 2 * direction, startY),  # back
+            (startX - 1 * direction, startY + 1),  # 1 fields back diagonally right
+            (startX - 1 * direction, startY - 1),  # 1 fields back diagonally left
+            (startX - 2 * direction, startY + 2),  # 1 fields back diagonally right
+            (startX - 2 * direction, startY - 2),  # 1 fields back diagonally left
+        ]
+
+        return list(
+            filter(
+                lambda x: (
+                    self.board[x[0]][x[1]] in [WHITE, BLACK, TOWN_BLACK, TOWN_WHITE]
+                ),
+                check_iterception,
+            )
+        )
+
+    def _all_possible_thread_moves(
+        self, startX: int, startY: int, spieler: Spieler
+    ) -> List[Tuple[int, int]]:
+        """Filter all moves that are not intercepted"""
+
+        direction = 1 if spieler == Spieler.WHITE else -1
+
+        possible_moves = [
+            (startX - 2 * direction, startY),  # 2 fields back
+            (startX - 2 * direction, startY + 2),  # 2 fields back diagonally right
+            (startX - 2 * direction, startY - 2),  # 2 fields back diagonally left
+        ]
+
+        return list(
+            set(self._check_interception(startX, startY, spieler)) ^ set(possible_moves)
+        )
+
 
 rooms: Dict[str, Room] = {}
 
@@ -268,24 +334,24 @@ if __name__ == "__main__":
     white_sid: str = next((k for k, v in r.players.items() if v == Spieler.WHITE))
     black_sid: str = next((k for k, v in r.players.items() if v == Spieler.BLACK))
 
-    w = {"sid": white_sid}
-    b = {"sid": black_sid}
+    # w = {"sid": white_sid}
+    # b = {"sid": black_sid}
 
-    for y in range(1, BOARD_SIZE, 2):
-        for x in range(1, 4):
-            r.place_object(**w | {"x": x, "y": y})
+    # for y in range(1, BOARD_SIZE, 2):
+    #     for x in range(1, 4):
+    #         r.place_object(**w | {"x": x, "y": y})
 
-    r.place_object(**w | {"x": 0, "y": 4})
+    # r.place_object(**w | {"x": 0, "y": 4})
 
-    for yy in range(0, BOARD_SIZE, 2):
-        for xx in range(6, 9):
-            r.place_object(**b | {"x": xx, "y": yy})
+    # for yy in range(0, BOARD_SIZE, 2):
+    #     for xx in range(6, 9):
+    #         r.place_object(**b | {"x": xx, "y": yy})
 
-    r.place_object(**b | {"x": 9, "y": 7})
+    # r.place_object(**b | {"x": 9, "y": 7})
 
-    print(r._count_objects(Spieler.WHITE), r._count_objects(Spieler.BLACK))
-    pprint(r.board)
-    print()
+    # print(r._count_objects(Spieler.WHITE), r._count_objects(Spieler.BLACK))
+    # pprint(r.board)
+    # print()
 
     # allowed white
     # r.move_soldier(1, 1, 2, 2, white_sid)  # diagonal rechts
@@ -311,23 +377,40 @@ if __name__ == "__main__":
     # r.move_soldier(9, 7, 9, 10, black_sid)  # versucht stadt moven
     # r.move_soldier(8, 0, 9, 0, black_sid)  # 1 hinten
 
-    print(f"Gamestate == {r.gameState.name}")
-
     # capture
-    black_coord = {"x": 4, "y": 1, "spieler": Spieler.BLACK}
-    r._place_soldier(**black_coord)  # place black
+    # black_coord = {"x": 4, "y": 1, "spieler": Spieler.BLACK}
+    # r._place_soldier(**black_coord)  # place black
 
     # r._place_soldier(3, 0, Spieler.WHITE)  # diagonally left
     # r._place_soldier(3, 2, Spieler.WHITE)  # diagonally right
     # r._place_soldier(4, 2, Spieler.WHITE)  # right
     # r._place_soldier(4, 0, Spieler.WHITE)  # left
 
-    pprint(r.board)
+    # pprint(r.board)
 
     # print(r._check_capture_soldier(**black_coord))
 
-    pprint(r.move_soldier(4, 1, 3, 1, black_sid))
+    # pprint(r.move_soldier(4, 1, 3, 1, black_sid))
 
-    print(r.black_captured, r.white_captured)
+    # print(r.black_captured, r.white_captured)
+
+    # interception logic
+    # print(r._check_threat(5, 1, Spieler.BLACK))  # false thread
+    # print(r._check_threat(4, 1, Spieler.BLACK))  # true thread
+
+    # thread logic
+    r._place_soldier(4, 5, Spieler.WHITE)
+    r._place_soldier(5, 5, Spieler.BLACK)
+    # r._place_soldier(7, 5, Spieler.WHITE)
+    # print(r._check_interception(5, 5, 7, 5, Spieler.BLACK))
+
+    pprint(r.board)
+    print()
+    # print(r._check_interception(5, 5, Spieler.BLACK))
+    print(r._all_possible_thread_moves(5, 5, Spieler.BLACK))
+    r.gameState = GameState.MOVE_SOLDATEN
+    # pprint(r.move_soldier(5, 5, 7, 7, black_sid)) #thread move right diagonally
+    # pprint(r.move_soldier(5, 5, 7, 3, black_sid))  # thread move left diagonally
+    # pprint(r.move_soldier(5, 5, 7, 5, black_sid))  # thread move down
 
     rooms.pop(r.name, None)
