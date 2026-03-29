@@ -37,13 +37,16 @@ class Room:
     board: Field = field(
         default_factory=lambda: np.zeros(
             (BOARD_SIZE, BOARD_SIZE), dtype=np.uint8
-        ).tolist()
+        ).tolist(),
+        init=False,
     )
-    players: Dict[str, Spieler] = field(default_factory=lambda: {})  # {sid:color}
-    gameState: GameState = GameState.PLACE_SOLDATEN
-    white_captured: int = 0
-    black_captured: int = 0
-    _capture_lock: Lock = field(default_factory=Lock)
+    players: Dict[str, Spieler] = field(
+        default_factory=lambda: {}, init=False
+    )  # {sid:color}
+    gameState: GameState = field(default=GameState.PLACE_SOLDATEN, init=False)
+    white_captured: int = field(default=0, init=False)
+    black_captured: int = field(default=0, init=False)
+    _capture_lock: Lock = field(default_factory=Lock, init=False)
 
     def __post_init__(self):
         rooms[self.name] = self
@@ -399,18 +402,19 @@ if __name__ == "__main__":
     # print(r._check_threat(4, 1, Spieler.BLACK))  # true thread
 
     # thread logic
-    r._place_soldier(4, 5, Spieler.WHITE)
-    r._place_soldier(5, 5, Spieler.BLACK)
+    # r._place_soldier(4, 5, Spieler.WHITE)
+    # r._place_soldier(5, 5, Spieler.BLACK)
     # r._place_soldier(7, 5, Spieler.WHITE)
     # print(r._check_interception(5, 5, 7, 5, Spieler.BLACK))
 
-    pprint(r.board)
-    print()
+    # pprint(r.board)
+    # print()
     # print(r._check_interception(5, 5, Spieler.BLACK))
-    print(r._all_possible_thread_moves(5, 5, Spieler.BLACK))
-    r.gameState = GameState.MOVE_SOLDATEN
+    # print(r._all_possible_thread_moves(5, 5, Spieler.BLACK))
+    # r.gameState = GameState.MOVE_SOLDATEN
     # pprint(r.move_soldier(5, 5, 7, 7, black_sid)) #thread move right diagonally
     # pprint(r.move_soldier(5, 5, 7, 3, black_sid))  # thread move left diagonally
     # pprint(r.move_soldier(5, 5, 7, 5, black_sid))  # thread move down
 
+    pprint(r.board)
     rooms.pop(r.name, None)
