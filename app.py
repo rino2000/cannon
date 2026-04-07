@@ -33,7 +33,7 @@ class GameState(IntEnum):
 
 @dataclass
 class Room:
-    name: str = "test"
+    name: str = field(default="test")
     board: Field = field(
         default_factory=lambda: np.zeros(
             (BOARD_SIZE, BOARD_SIZE), dtype=np.uint8
@@ -94,16 +94,13 @@ class Room:
         return (soldiers, town)
 
     def _all_objects_placed(self) -> bool:
-        return all(
-            self._count_objects(spieler) == (MAX_SOLDIERS, 1)
-            for spieler in list(Spieler)
-        )
+        return all(self._count_objects(s) == (MAX_SOLDIERS, 1) for s in list(Spieler))
 
     def _white_placed_all(self) -> bool:
         soldiers, towns = self._count_objects(Spieler.WHITE)
         return soldiers == MAX_SOLDIERS and towns == 1
 
-    def _get_player(self, sid: str) -> Spieler:
+    def _get_player(self, sid: str) -> Optional[Spieler]:
         return self.players.get(sid)
 
     def _is_room_full(self) -> bool:
@@ -179,9 +176,6 @@ class Room:
             print("nicht dein soldat")
             return None
 
-        t = self._check_threat(startX, startY, spieler)
-        print(t)
-
         if self._check_threat(startX, startY, spieler):
             if (endX, endY) in self._all_possible_thread_moves(startX, startY, spieler):
                 print(f"thread move {endX, endY} moved")
@@ -227,10 +221,11 @@ class Room:
 
         possible = list(filter(lambda x: self.board[x[0]][x[1]] == enemy_color, fields))
         check = all(map(lambda x: self._validate_coordinate(x[0], x[1]), possible))
+        # check = all([self._validate_coordinate(*p) for p in possible])
 
         return possible if check else ()
 
-    def _capture_soldier_count(self, spieler: Spieler) -> None:
+    def _capture_soldier(self, spieler: Spieler) -> None:
         with self._capture_lock:
             if spieler == Spieler.WHITE:
                 self.white_captured += 1
@@ -257,7 +252,7 @@ class Room:
         enemy_soldier = WHITE if spieler == Spieler.BLACK else BLACK
 
         if self.board[endX][endY] == enemy_soldier:
-            self._capture_soldier_count(
+            self._capture_soldier(
                 Spieler.WHITE if spieler == Spieler.BLACK else Spieler.BLACK
             )
 
@@ -281,22 +276,23 @@ class Room:
             (x + direction, y + 1),  # diagonally left
         ]
 
-        return any(map(lambda x: self.board[x[0]][x[1]] == opponent, fields))
+        # return any(map(lambda x: self.board[x[0]][x[1]] == opponent, fields))
+        return any([self.board[x][y] == opponent for x, y in fields])
 
     def _check_interception(
-        self, startX: int, startY: int, spieler: Spieler
+        self, x: int, y: int, spieler: Spieler
     ) -> List[Tuple[int, int]]:
         """return List of all interception koordinates that are calculated (endX,endY)"""
 
         direction = 1 if spieler == Spieler.WHITE else -1
 
         check_iterception = [
-            (startX - 1 * direction, startY),  # back
-            (startX - 2 * direction, startY),  # back
-            (startX - 1 * direction, startY + 1),  # 1 fields back diagonally right
-            (startX - 1 * direction, startY - 1),  # 1 fields back diagonally left
-            (startX - 2 * direction, startY + 2),  # 1 fields back diagonally right
-            (startX - 2 * direction, startY - 2),  # 1 fields back diagonally left
+            (x - 1 * direction, y),  # back
+            (x - 2 * direction, y),  # back
+            (x - 1 * direction, y + 1),  # 1 fields back diagonally right
+            (x - 1 * direction, y - 1),  # 1 fields back diagonally left
+            (x - 2 * direction, y + 2),  # 1 fields back diagonally right
+            (x - 2 * direction, y - 2),  # 1 fields back diagonally left
         ]
 
         return list(
@@ -309,21 +305,177 @@ class Room:
         )
 
     def _all_possible_thread_moves(
-        self, startX: int, startY: int, spieler: Spieler
+        self, x: int, y: int, spieler: Spieler
     ) -> List[Tuple[int, int]]:
         """Filter all moves that are not intercepted"""
 
         direction = 1 if spieler == Spieler.WHITE else -1
 
         possible_moves = [
-            (startX - 2 * direction, startY),  # 2 fields back
-            (startX - 2 * direction, startY + 2),  # 2 fields back diagonally right
-            (startX - 2 * direction, startY - 2),  # 2 fields back diagonally left
+            (x - 2 * direction, y),  # 2 fields back
+            (x - 2 * direction, y + 2),  # 2 fields back diagonally right
+            (x - 2 * direction, y - 2),  # 2 fields back diagonally left
         ]
 
-        return list(
-            set(self._check_interception(startX, startY, spieler)) ^ set(possible_moves)
+        return list(set(self._check_interception(x, y, spieler)) ^ set(possible_moves))
+
+    def _check_cannon_coordinates(self, endX: int, endY: int, spieler: Spieler):
+        direction = 1 if spieler == Spieler.WHITE else -1
+
+        coords = []
+
+        vertical_coords = [
+            (endX + 1 * direction, endY),
+            (endX + 2 * direction, endY),
+            (endX - 1 * direction, endY),
+            (endX - 2 * direction, endY),
+        ]
+        coords.extend(vertical_coords)
+
+        diagonal_coords = [
+            (endX + 1 * direction, endY - 1),
+            (endX + 2 * direction, endY - 2),
+            (endX + 1 * direction, endY + 1),
+            (endX + 2 * direction, endY + 2),
+            (endX - 1 * direction, endY - 1),
+            (endX - 2 * direction, endY - 2),
+            (endX - 1 * direction, endY + 1),
+            (endX - 2 * direction, endY + 2),
+        ]
+        coords.extend(diagonal_coords)
+
+        return list(set(filter(lambda c: self._validate_coordinate(*c), coords)))
+
+    def _check_cannon_interception(self, x: int, y: int, spieler: Spieler) -> bool:
+        soldier = WHITE if spieler == Spieler.WHITE else BLACK
+        opponent = BLACK if spieler == Spieler.WHITE else WHITE
+
+        cannon_coords = self._check_cannon_coordinates(x, y, spieler)
+        soldier_coords = [
+            coord
+            for coord in cannon_coords
+            if self.board[coord[0]][coord[1]] == soldier
+        ]
+
+        if len(soldier_coords) < 2:
+            return False
+
+        for x, y in soldier_coords:
+            if self.board[x][y] in [opponent, TOWN_WHITE, TOWN_BLACK]:
+                return False
+
+        return True
+
+    def _check_create_cannon(self, endX: int, endY: int, spieler: Spieler) -> bool:
+        return self._check_cannon_interception(endX, endY, spieler)
+
+    def _get_all_cannons(self, x: int, y: int, spieler: Spieler):
+        direction = 1 if spieler == Spieler.WHITE else -1
+        soldier = WHITE if spieler == Spieler.WHITE else BLACK
+
+        all_possible_coords = [
+            # 2 druber
+            ((x + 1 * direction, y), (x + 2 * direction, y)),
+            # 2 drunter
+            ((x - 1 * direction, y), (x - 2 * direction, y)),
+            # zwischen 2 vertical
+            ((x + 1 * direction, y), (x - 1 * direction, y)),
+            # 2 digonal rechts boden
+            ((x + 1 * direction, y + 1), (x + 2 * direction, y + 2)),
+            # 2 digonal rechts spitze
+            ((x - 1 * direction, y - 1), (x - 2 * direction, y - 2)),
+            # 2 diagonal rechts zwischen
+            ((x + 1 * direction, y + 1), (x - 1 * direction, y - 1)),
+            # 2 digonal links boden
+            ((x + 1 * direction, y - 1), (x + 2 * direction, y - 2)),
+            # 2 digonal links spitze
+            ((x - 1 * direction, y - 1), (x - 2 * direction, y - 2)),
+            # 2 diagonal links zwischen
+            ((x + 1 * direction, y - 1), (x - 1 * direction, y - 1)),
+        ]
+
+        valide = []
+
+        for first, second in all_possible_coords:
+            if self._validate_coordinate(*first) and self._validate_coordinate(*second):
+                (xx, yy), (xxx, yyy) = first, second
+
+                if (
+                    self.board[x][y] == soldier
+                    and self.board[xx][yy] == soldier
+                    and self.board[xxx][yyy] == soldier
+                ):
+                    valide.append((first, second, (x, y)))
+
+        return valide
+
+    def _get_cannon_gun_axis(
+        self, coords: List[Tuple[Tuple[int, int]]], spieler: Spieler
+    ) -> Tuple[int, int]:
+        return (
+            min(chain.from_iterable(coords), key=lambda x: x[0])
+            if spieler == Spieler.WHITE
+            else max(chain.from_iterable(coords), key=lambda x: x[0])
         )
+
+    def _check_cannon_shoot_interception(
+        self, x: int, y: int, spieler: Spieler
+    ) -> bool:
+
+        direction = 1 if spieler == Spieler.WHITE else -1
+        opponent = BLACK if spieler == Spieler.WHITE else WHITE
+
+        interceptions = [
+            (x + 3 * direction, y),  # gerade
+            (x + 3 * direction, y + 3),  # diagonal rechts
+            (x + 3 * direction, y - 3),  # diagonal links
+        ]
+
+        return any([self.board[x][y] == opponent for x, y in interceptions])
+
+    def _check_cannon_shoot_validate(self, startX: int, startY: int, spieler: Spieler):
+
+        direction = 1 if spieler == Spieler.WHITE else -1
+        possible_targets = [
+            (startX + 4 * direction, startY),
+            (startX + 5 * direction, startY),
+            (startX + 4 * direction, startY + 4),
+            (startX + 5 * direction, startY + 5),
+            (startX + 4 * direction, startY - 4),
+            (startX + 5 * direction, startY - 5),
+        ]
+
+        return list(filter(lambda c: self._validate_coordinate(*c), possible_targets))
+
+    def _cannon_shoot(self, startX: int, startY: int, endX: int, endY: int, spieler):
+
+        coords = self._check_cannon_shoot_validate(startX, startY, spieler)
+        soldier = WHITE if spieler == Spieler.WHITE else BLACK
+
+        if self._check_cannon_shoot_interception(endX, endY, spieler):
+            print("cannon shoot fail, because of interception")
+            return None
+
+        x, y = self._get_cannon_gun_axis(
+            self._get_all_cannons(startX, startY, spieler), spieler
+        )
+
+        if not self.board[x][y] == soldier and not (startX == x and startY == y):
+            print(f"cannon shoot axis != {startX, startY}")
+            return None
+
+        if (endX, endY) not in coords:
+            print("cannon target shooting coord is not in coords")
+            return None
+
+        if self.board[endX][endY] in [soldier, TOWN_BLACK, TOWN_WHITE]:
+            print("cannon target shoot is not opponent")
+            return None
+
+        self._capture_soldier(spieler)
+        self.board[endX][endY] = EMPTY
+        print(f"cannon shoot success {endX, endY}")
+        return self.board
 
 
 rooms: Dict[str, Room] = {}
@@ -405,7 +557,7 @@ if __name__ == "__main__":
     # r._place_soldier(4, 5, Spieler.WHITE)
     # r._place_soldier(5, 5, Spieler.BLACK)
     # r._place_soldier(7, 5, Spieler.WHITE)
-    # print(r._check_interception(5, 5, 7, 5, Spieler.BLACK))
+    # print(r._check_interception(5, 5, Spieler.BLACK))
 
     # pprint(r.board)
     # print()
@@ -416,5 +568,41 @@ if __name__ == "__main__":
     # pprint(r.move_soldier(5, 5, 7, 3, black_sid))  # thread move left diagonally
     # pprint(r.move_soldier(5, 5, 7, 5, black_sid))  # thread move down
 
+    # [r._place_soldier(x, 0, Spieler.BLACK) for x in range(7, 9)]
+    # r._place_soldier(5, 5, Spieler.BLACK)
+    # r._place_soldier(6, 5, Spieler.BLACK)
+    # r._place_soldier(6, 5, Spieler.BLACK)
+    # r._place_soldier(7, 4, Spieler.BLACK)
+
+    # r.board = np.arange(100).reshape(10, 10).tolist()
+    # r._place_soldier(5, 5, Spieler.BLACK)
+    # r._place_soldier(5, 5, Spieler.BLACK)
+    r._place_soldier(4, 5, Spieler.BLACK)
+    r._place_soldier(3, 5, Spieler.BLACK)
+    r._place_soldier(5, 5, Spieler.BLACK)
+    # r._place_soldier(4, 4, Spieler.WHITE)
+
+    # c = r._check_create_cannon(5, 5, Spieler.BLACK)
+
+    # print(c)
+
+    # r._place_soldier(5, 5, Spieler.BLACK) if c else None
+    l = r._get_all_cannons(5, 5, Spieler.BLACK)
+
+    # print(r._get_cannon_gun_axis(l, Spieler.WHITE))
+
+    # r._place_soldier(2, 5, Spieler.WHITE)
+    # r._place_soldier(2, 8, Spieler.WHITE)
+    # r._place_soldier(1, 1, Spieler.WHITE)
+    # print(r._check_cannon_shoot_interception(5, 5, Spieler.BLACK))
+    # print(r._check_cannon_shoot(5, 5, 1, 1, Spieler.BLACK))
+
+    r._place_soldier(1, 5, Spieler.WHITE)
+    r._place_soldier(0, 5, Spieler.WHITE)
+    r._place_soldier(1, 1, Spieler.WHITE)
+    r._place_soldier(1, 9, Spieler.WHITE)
+
     pprint(r.board)
+    pprint(r._cannon_shoot(5, 5, 1, 1, Spieler.BLACK))
+
     rooms.pop(r.name, None)
