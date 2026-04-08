@@ -46,13 +46,13 @@ class Room:
     gameState: GameState = field(default=GameState.PLACE_SOLDATEN, init=False)
     white_captured: int = field(default=0, init=False)
     black_captured: int = field(default=0, init=False)
-    _capture_lock: Lock = field(default_factory=Lock, init=False)
+    _lock: Lock = field(default_factory=Lock, init=False)
 
     def __post_init__(self):
         rooms[self.name] = self
 
     def join_room(self, sid: str) -> Optional[Spieler]:
-        if self._is_room_full():
+        if self.room_is_full():
             print("room is allready full")
             return None
 
@@ -97,17 +97,16 @@ class Room:
         return all(self._count_objects(s) == (MAX_SOLDIERS, 1) for s in list(Spieler))
 
     def _white_placed_all(self) -> bool:
-        soldiers, towns = self._count_objects(Spieler.WHITE)
-        return soldiers == MAX_SOLDIERS and towns == 1
+        return self._count_objects(Spieler.WHITE) == (MAX_SOLDIERS, 1)
 
     def _get_player(self, sid: str) -> Optional[Spieler]:
         return self.players.get(sid)
 
-    def _is_room_full(self) -> bool:
+    def room_is_full(self) -> bool:
         return len(self.players) >= MAX_PLAYERS_IN_ROOM
 
     def _check_placement(self, x: int, y: int, spieler: Spieler) -> Optional[Field]:
-        if not self._is_room_full():
+        if not self.room_is_full():
             print("warte auf den anderen gegner")
             return None
 
@@ -168,12 +167,20 @@ class Room:
 
         soldier = WHITE if spieler == Spieler.WHITE else BLACK
 
+        if self.board[endX][endY] != EMPTY:
+            print(f"ziel koordinate {endX, endY} ist nicht frei")
+            return None
+
+        if abs(endY - startY) > 1 and abs(endX - startX) > 1:
+            print("soldat darf nur 1 schritt in allen richtungen")
+            return None
+
         if self.board[startX][startY] in [TOWN_BLACK, TOWN_WHITE]:
             print("du darfst die stadt nicht bewegen")
             return None
 
         if self.board[startX][startY] != soldier:
-            print("nicht dein soldat")
+            print(f"nicht dein soldat {soldier}")
             return None
 
         if self._check_threat(startX, startY, spieler):
@@ -183,24 +190,8 @@ class Room:
                 self.board[endX][endY] = soldier
                 return self.board
 
-        captures = self._check_capture_soldier(startX, startY, spieler)
-
-        if (endX, endY) in captures:
+        if (endX, endY) in self._check_capture_soldier(startX, startY, spieler):
             return self._capture(startX, startY, endX, endY, spieler)
-
-        if self.board[endX][endY] != EMPTY:
-            print(f"ziel koordinate {endX, endY} ist nicht frei")
-            return None
-
-        direction = 1 if spieler == Spieler.WHITE else -1
-
-        if endX != startX + direction:
-            print("soldat darf nur 1 schritt vorraus und diagonal rechts, links")
-            return None
-
-        if abs(endY - startY) > 1:
-            print("soldat darf nur 1 schritt in allen richtungen")
-            return None
 
         self.board[startX][startY] = EMPTY
         self.board[endX][endY] = soldier
@@ -220,13 +211,12 @@ class Room:
         ]
 
         possible = list(filter(lambda x: self.board[x[0]][x[1]] == enemy_color, fields))
-        check = all(map(lambda x: self._validate_coordinate(x[0], x[1]), possible))
-        # check = all([self._validate_coordinate(*p) for p in possible])
+        check = all(map(lambda c: self._validate_coordinate(*c), possible))
 
         return possible if check else ()
 
     def _capture_soldier(self, spieler: Spieler) -> None:
-        with self._capture_lock:
+        with self._lock:
             if spieler == Spieler.WHITE:
                 self.white_captured += 1
             else:
@@ -276,8 +266,7 @@ class Room:
             (x + direction, y + 1),  # diagonally left
         ]
 
-        # return any(map(lambda x: self.board[x[0]][x[1]] == opponent, fields))
-        return any([self.board[x][y] == opponent for x, y in fields])
+        return any(map(lambda x: self.board[x[0]][x[1]] == opponent, fields))
 
     def _check_interception(
         self, x: int, y: int, spieler: Spieler
@@ -579,9 +568,9 @@ if __name__ == "__main__":
     # r.board = np.arange(100).reshape(10, 10).tolist()
     # r._place_soldier(5, 5, Spieler.BLACK)
     # r._place_soldier(5, 5, Spieler.BLACK)
-    r._place_soldier(4, 5, Spieler.BLACK)
-    r._place_soldier(3, 5, Spieler.BLACK)
-    r._place_soldier(5, 5, Spieler.BLACK)
+    # r._place_soldier(4, 5, Spieler.BLACK)
+    # r._place_soldier(3, 5, Spieler.BLACK)
+    # r._place_soldier(5, 5, Spieler.BLACK)
     # r._place_soldier(4, 4, Spieler.WHITE)
 
     # c = r._check_create_cannon(5, 5, Spieler.BLACK)
@@ -589,7 +578,7 @@ if __name__ == "__main__":
     # print(c)
 
     # r._place_soldier(5, 5, Spieler.BLACK) if c else None
-    l = r._get_all_cannons(5, 5, Spieler.BLACK)
+    # l = r._get_all_cannons(5, 5, Spieler.BLACK)
 
     # print(r._get_cannon_gun_axis(l, Spieler.WHITE))
 
@@ -599,14 +588,18 @@ if __name__ == "__main__":
     # print(r._check_cannon_shoot_interception(5, 5, Spieler.BLACK))
     # print(r._check_cannon_shoot(5, 5, 1, 1, Spieler.BLACK))
 
-    r._place_soldier(1, 5, Spieler.WHITE)
-    r._place_soldier(0, 5, Spieler.WHITE)
-    r._place_soldier(1, 1, Spieler.WHITE)
-    r._place_soldier(1, 9, Spieler.WHITE)
+    # r._place_soldier(1, 5, Spieler.WHITE)
+    # r._place_soldier(0, 5, Spieler.WHITE)
+    # r._place_soldier(1, 1, Spieler.WHITE)
+    # r._place_soldier(1, 9, Spieler.WHITE)
 
-    pprint(r.board)
+    # pprint(r.board)
+    # print()
+    # pprint(r._cannon_shoot(5, 5, 1, 1, Spieler.BLACK))
+    # print(r.black_captured, r.white_captured)
+
+    r.gameState = GameState.MOVE_SOLDATEN
+    pprint(r.place_object(2, 2, white_sid))
     print()
-    pprint(r._cannon_shoot(5, 5, 1, 1, Spieler.BLACK))
-    print(r.black_captured, r.white_captured)
-
+    pprint(r.move_soldier(2, 2, 2, 3, white_sid))
     rooms.pop(r.name, None)
