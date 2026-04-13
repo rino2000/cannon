@@ -2,7 +2,7 @@ import random
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import IntEnum
-from itertools import chain
+from itertools import chain, compress
 from pprint import pprint
 from threading import Lock
 from typing import Dict, List, Optional, Tuple
@@ -171,7 +171,7 @@ class Room:
             print(f"ziel koordinate {endX, endY} ist nicht frei")
             return None
 
-        if abs(endY - startY) > 1 and abs(endX - startX) > 1:
+        if abs(endY - startY) > 1 or abs(endX - startX) > 1:
             print("soldat darf nur 1 schritt in allen richtungen")
             return None
 
@@ -210,7 +210,8 @@ class Room:
             (x + direction, y + 1),  # diagonally right
         ]
 
-        possible = list(filter(lambda x: self.board[x[0]][x[1]] == enemy_color, fields))
+        check = filter(lambda c: self._validate_coordinate(*c), fields)
+        possible = filter(lambda x: self.board[x[0]][x[1]] == enemy_color, check)
         check = all(map(lambda c: self._validate_coordinate(*c), possible))
 
         return possible if check else ()
@@ -266,7 +267,15 @@ class Room:
             (x + direction, y + 1),  # diagonally left
         ]
 
-        return any(map(lambda x: self.board[x[0]][x[1]] == opponent, fields))
+        return any(
+            map(
+                lambda x: (
+                    self._validate_coordinate(*x)
+                    and (self.board[x[0]][x[1]] == opponent)
+                ),
+                fields,
+            )
+        )
 
     def _check_interception(
         self, x: int, y: int, spieler: Spieler
@@ -467,6 +476,85 @@ class Room:
 
         return self.board
 
+    def _check_all_possbible_cannon_moves(
+        self, startX: int, startY: int, spieler: Spieler
+    ) -> List[List[Tuple[int, int]]]:
+
+        direction = 1 if spieler == Spieler.WHITE else -1
+
+        all_cannons = list(
+            chain.from_iterable(self._get_all_cannons(startX, startY, spieler))
+        )
+
+        up = map(lambda c: (c[0] + 1 * direction, c[1]), all_cannons)
+        down = map(lambda c: (c[0] - 1 * direction, c[1]), all_cannons)
+        left = map(lambda c: (c[0], c[1] - 1), all_cannons)
+        right = map(lambda c: (c[0], c[1] + 1), all_cannons)
+
+        up = filter(lambda c: self._validate_coordinate(*c), up)
+        down = filter(lambda c: self._validate_coordinate(*c), down)
+        left = filter(lambda c: self._validate_coordinate(*c), left)
+        right = filter(lambda c: self._validate_coordinate(*c), right)
+
+        return list(filter(None, map(list, [up, down, left, right])))
+
+    def _check_cannon_move_target_field_is_empty(
+        self,
+        all_possible_coord: List[List[Tuple[int, int]]],
+        spieler: Spieler,
+    ) -> List[List[Tuple[int, int]]]:
+
+        soldier = WHITE if spieler == Spieler.WHITE else BLACK
+
+        def is_soldier_or_empty(l: List[Tuple[int, int]]) -> bool:
+            return all(
+                map(
+                    lambda c: (
+                        (self.board[c[0]][c[1]] == soldier)
+                        or (self.board[c[0]][c[1]] == EMPTY)
+                    ),
+                    l,
+                )
+            )
+
+        valide = map(is_soldier_or_empty, all_possible_coord)
+        return list(compress(map(lambda x: x, all_possible_coord), valide))
+
+    def move_cannon(
+        self, startX: int, startY: int, endX: int, endY: int, spieler: Spieler
+    ) -> Optional[Field]:
+
+        if not self._validate_coordinate(
+            startX, startY
+        ) and not self._validate_coordinate(endX, endY):
+            print(f"coordinaten sind invalide {startX, startY}")
+            return None
+
+        cannons = self._get_all_cannons(startX, startY, spieler)
+
+        if not cannons or (startX, startY) not in chain.from_iterable(cannons):
+            print(f"{startX, startY} gibt keine cannons")
+            return None
+
+        axis = self._get_cannon_gun_axis(cannons, spieler)
+        possibles = self._check_all_possbible_cannon_moves(*axis, spieler)
+        filterd = self._check_cannon_move_target_field_is_empty(possibles, spieler)
+
+        if not filterd or (endX, endY) not in chain.from_iterable(filterd):
+            print("no possible cannons to move")
+            return None
+
+        soldier = WHITE if spieler == Spieler.WHITE else BLACK
+
+        move = sorted(filter(lambda x: (endX, endY) in x, filterd), key=lambda x: x[0])
+
+        for x, y in chain.from_iterable(cannons):
+            self.board[x][y] = EMPTY
+
+        for x, y in chain.from_iterable(move):
+            self.board[x][y] = soldier
+        return self.board
+
 
 rooms: Dict[str, Room] = {}
 
@@ -598,8 +686,36 @@ if __name__ == "__main__":
     # pprint(r._cannon_shoot(5, 5, 1, 1, Spieler.BLACK))
     # print(r.black_captured, r.white_captured)
 
-    r.gameState = GameState.MOVE_SOLDATEN
-    pprint(r.place_object(2, 2, white_sid))
-    print()
-    pprint(r.move_soldier(2, 2, 2, 3, white_sid))
+    # r.gameState = GameState.MOVE_SOLDATEN
+    # pprint(r.place_object(2, 2, white_sid))
+    # print()
+    # pprint(r.move_soldier(2, 2, 2, 3, white_sid))
+
+    # move shoot
+    # r._place_soldier(6, 0, Spieler.BLACK)
+    # r._place_soldier(7, 0, Spieler.BLACK)
+    # r._place_soldier(8, 0, Spieler.BLACK)
+    # r._place_soldier(4, 0, Spieler.WHITE)
+    # pprint(r.board)
+
+    # cannons = r._get_all_cannons(6, 0, Spieler.BLACK)
+    # cannon_axis = r._get_cannon_gun_axis(cannons, Spieler.BLACK)
+    # print(cannon_axis)
+    # print(
+    #     r._check_cannon_shoot_interception(
+    #         cannon_axis[0], cannon_axis[1], Spieler.BLACK
+    #     )
+    # )
+    # pprint(r._cannon_shoot(cannon_axis[0], cannon_axis[1], 4, 0, Spieler.BLACK))
+
+    # cannon move
+    r._place_soldier(6, 0, Spieler.BLACK)
+    r._place_soldier(7, 0, Spieler.BLACK)
+    r._place_soldier(8, 0, Spieler.BLACK)
+    r._place_soldier(5, 0, Spieler.WHITE)
+
+    pprint(r.board)
+    c = r._check_all_possbible_cannon_moves(8, 0, Spieler.BLACK)
+    # print(r._check_cannon_move_target_field_is_empty(c, Spieler.BLACK))
+    pprint(r.move_cannon(8, 0, 8, 1, Spieler.BLACK))
     rooms.pop(r.name, None)
