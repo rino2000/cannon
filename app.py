@@ -709,13 +709,15 @@ if __name__ == "__main__":
     # pprint(r._cannon_shoot(cannon_axis[0], cannon_axis[1], 4, 0, Spieler.BLACK))
 
     # cannon move
-    r._place_soldier(6, 0, Spieler.BLACK)
-    r._place_soldier(7, 0, Spieler.BLACK)
-    r._place_soldier(8, 0, Spieler.BLACK)
-    r._place_soldier(5, 0, Spieler.WHITE)
+    # r._place_soldier(6, 0, Spieler.BLACK)
+    # r._place_soldier(7, 0, Spieler.BLACK)
+    # r._place_soldier(8, 0, Spieler.BLACK)
+    # r._place_soldier(5, 0, Spieler.WHITE)
+
+    # pprint(r.board)
+    # c = r._check_all_possbible_cannon_moves(8, 0, Spieler.BLACK)
+    # print(r._check_cannon_move_target_field_is_empty(c, Spieler.BLACK))
+    # pprint(r.move_cannon(8, 0, 8, 1, Spieler.BLACK))
 
     pprint(r.board)
-    c = r._check_all_possbible_cannon_moves(8, 0, Spieler.BLACK)
-    # print(r._check_cannon_move_target_field_is_empty(c, Spieler.BLACK))
-    pprint(r.move_cannon(8, 0, 8, 1, Spieler.BLACK))
     rooms.pop(r.name, None)
