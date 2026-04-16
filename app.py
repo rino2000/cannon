@@ -2,7 +2,7 @@ import random
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import IntEnum
-from itertools import chain, compress
+from itertools import batched, chain, compress, filterfalse
 from pprint import pprint
 from threading import Lock
 from typing import Dict, List, Optional, Tuple
@@ -171,6 +171,13 @@ class Room:
             print(f"ziel koordinate {endX, endY} ist nicht frei")
             return None
 
+        if self._check_threat(startX, startY, spieler):
+            if (endX, endY) in self._all_possible_thread_moves(startX, startY, spieler):
+                print(f"thread move {endX, endY} moved")
+                self.board[startX][startY] = EMPTY
+                self.board[endX][endY] = soldier
+                return self.board
+
         if (
             spieler == Spieler.WHITE
             and (startX - endX) == 1
@@ -191,13 +198,6 @@ class Room:
         if self.board[startX][startY] != soldier:
             print(f"nicht dein soldat {soldier}")
             return None
-
-        if self._check_threat(startX, startY, spieler):
-            if (endX, endY) in self._all_possible_thread_moves(startX, startY, spieler):
-                print(f"thread move {endX, endY} moved")
-                self.board[startX][startY] = EMPTY
-                self.board[endX][endY] = soldier
-                return self.board
 
         if (endX, endY) in self._check_capture_soldier(startX, startY, spieler):
             return self._capture(startX, startY, endX, endY, spieler)
@@ -275,56 +275,48 @@ class Room:
             (x + direction, y - 1),  # diagonally right
             (x + direction, y + 1),  # diagonally left
         ]
-
-        return any(
-            map(
-                lambda x: (
-                    self._validate_coordinate(*x)
-                    and (self.board[x[0]][x[1]] == opponent)
-                ),
-                fields,
-            )
-        )
+        validate_coordinates = filter(lambda c: self._validate_coordinate(*c), fields)
+        m = map(lambda x: self.board[x[0]][x[1]] == opponent, validate_coordinates)
+        return any(m)
 
     def _check_interception(
         self, x: int, y: int, spieler: Spieler
-    ) -> List[Tuple[int, int]]:
-        """return List of all interception koordinates that are calculated (endX,endY)"""
+    ) -> List[Tuple[Tuple[int, int]]]:
 
         direction = 1 if spieler == Spieler.WHITE else -1
 
-        check_iterception = [
-            (x - 1 * direction, y),  # back
-            (x - 2 * direction, y),  # back
-            (x - 1 * direction, y + 1),  # 1 fields back diagonally right
-            (x - 1 * direction, y - 1),  # 1 fields back diagonally left
-            (x - 2 * direction, y + 2),  # 1 fields back diagonally right
-            (x - 2 * direction, y - 2),  # 1 fields back diagonally left
+        coords = [
+            (
+                (x - 1 * direction, y),  # back
+                (x - 2 * direction, y),
+            ),
+            (
+                (x - 1 * direction, y + 1),  # fields back diagonally right
+                (x - 2 * direction, y + 2),
+            ),
+            (
+                (x - 1 * direction, y - 1),  # fields back diagonally left
+                (x - 2 * direction, y - 2),
+            ),
         ]
 
-        return list(
-            filter(
-                lambda x: (
-                    self.board[x[0]][x[1]] in [WHITE, BLACK, TOWN_BLACK, TOWN_WHITE]
-                ),
-                check_iterception,
-            )
+        # valide coordinates
+        valide_coords = batched(
+            map(lambda c: self._validate_coordinate(*c), chain.from_iterable(coords)), 2
         )
 
-    def _all_possible_thread_moves(
-        self, x: int, y: int, spieler: Spieler
-    ) -> List[Tuple[int, int]]:
-        """Filter all moves that are not intercepted"""
+        # filter all tuple coords where False is in
+        f = filterfalse(lambda x: False in x, valide_coords)
 
-        direction = 1 if spieler == Spieler.WHITE else -1
+        interception = [WHITE, BLACK, TOWN_BLACK, TOWN_WHITE]
+        all_possible_coords = list(compress(coords, f))
+        # check for interception
+        for coord in all_possible_coords:
+            x, y = coord
+            if self.board[x[0]][x[1]] or self.board[y[0]][y[1]] in interception:
+                all_possible_coords.remove(coord)
 
-        possible_moves = [
-            (x - 2 * direction, y),  # 2 fields back
-            (x - 2 * direction, y + 2),  # 2 fields back diagonally right
-            (x - 2 * direction, y - 2),  # 2 fields back diagonally left
-        ]
-
-        return list(set(self._check_interception(x, y, spieler)) ^ set(possible_moves))
+        return all_possible_coords
 
     def _check_cannon_coordinates(self, endX: int, endY: int, spieler: Spieler):
         direction = 1 if spieler == Spieler.WHITE else -1
@@ -727,6 +719,56 @@ if __name__ == "__main__":
     # c = r._check_all_possbible_cannon_moves(8, 0, Spieler.BLACK)
     # print(r._check_cannon_move_target_field_is_empty(c, Spieler.BLACK))
     # pprint(r.move_cannon(8, 0, 8, 1, Spieler.BLACK))
+
+    # [
+    #     r.place_object(x, y, white_sid)
+    #     for y in range(0, 11)
+    #     if y % 2 != 0
+    #     for x in range(1, 4)
+    # ]
+    # r.place_object(0, 4, white_sid)  # town white
+    # [
+    #     r.place_object(x, y, black_sid)
+    #     for y in range(0, 10)
+    #     if y % 2 == 0
+    #     for x in range(6, 9)
+    # ]
+    # r.place_object(9, 7, black_sid)  # town black
+
+    # pprint(r.board)
+
+    # pprint(r.move_soldier(6, 0, 5, 0, black_sid))  # move soldier forward black
+    # pprint(r.move_soldier(6, 2, 5, 1, black_sid))  # move soldier diagonally left black
+    # pprint(r.move_soldier(6, 4, 5, 5, black_sid))  # move soldier diagonally right black
+    # pprint(r.move_soldier(5, 5, 6, 5, black_sid))  # move soldier back black
+    # print()
+    # r._place_soldier(1, 1, Spieler.WHITE)
+    # r.move_soldier(1, 1, 2, 1, white_sid)  # move soldier forward white
+    # r.move_soldier(2, 1, 3, 2, white_sid)  # move soldier left diagonally white
+    # r.move_soldier(3, 2, 4, 1, white_sid)  # move soldier right diagonally white
+
+    # pprint(r.move_soldier(0, 4, 0, 5, white_sid))  # move town white
+    # pprint(r.move_soldier(9, 7, 9, 6, black_sid))  # move town black
+
+    # pprint(r.move_soldier(3, 1, 4, 1, white_sid))  # move soldier white
+
+    # r.gameState = GameState.MOVE_SOLDATEN
+    # r._place_soldier(1, 1, Spieler.WHITE) # move backwards thread for black
+    # r._place_soldier(2, 1, Spieler.BLACK)
+    # r._place_soldier(3, 2, Spieler.WHITE)
+    # [
+    #     r._place_soldier(*x, Spieler.BLACK)
+    #     for x in chain.from_iterable(r._check_interception(2, 1, Spieler.BLACK))
+    # ]
+
+    r.gameState = GameState.MOVE_SOLDATEN
+    r._place_soldier(5, 5, Spieler.BLACK)  # move backwards thread for white
+    r._place_soldier(4, 5, Spieler.WHITE)
+    r._place_soldier(2, 3, Spieler.BLACK)
+    [
+        r._place_soldier(*x, Spieler.WHITE)
+        for x in chain.from_iterable(r._check_interception(4, 5, Spieler.WHITE))
+    ]
 
     pprint(r.board)
     rooms.pop(r.name, None)
