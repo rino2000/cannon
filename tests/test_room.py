@@ -11,6 +11,14 @@ def room():
     return r
 
 
+def white_sid(room) -> str:
+    return next((k for k, v in room.players.items() if v == Spieler.WHITE))
+
+
+def black_sid(room) -> str:
+    return next((k for k, v in room.players.items() if v == Spieler.BLACK))
+
+
 class TestRoom:
     def test_create_default_name(self, room: Room):
         assert room.name == "test"
@@ -31,32 +39,29 @@ class TestRoom:
         assert len(room.players) == MAX_PLAYERS_IN_ROOM
 
     def test_white_placed_all(self, room: Room):
-        white: str = next((k for k, v in room.players.items() if v == Spieler.WHITE))
         [
-            room.place_object(x, y, white)
+            room.place_object(x, y, white_sid(room))
             for y in range(0, 11)
             if y % 2 != 0
             for x in range(1, 4)
         ]
-        room.place_object(0, 4, white)  # town white
+        room.place_object(0, 4, white_sid(room))  # town white
         assert room._white_placed_all()
 
     def test_black_place_first(self, room: Room):
-        black: str = next((k for k, v in room.players.items() if v == Spieler.BLACK))
-        error = room.place_object(6, 0, black)
+        error = room.place_object(6, 0, black_sid(room))
         assert error is None, "value was odd, should be even"
 
     def test_black_place_all(self, room: Room):
         self.test_white_placed_all(room)
-        black: str = next((k for k, v in room.players.items() if v == Spieler.BLACK))
-        room.place_object(6, 0, black)
+        room.place_object(6, 0, black_sid(room))
         [
-            room.place_object(x, y, black)
+            room.place_object(x, y, black_sid(room))
             for y in range(0, 10)
             if y % 2 == 0
             for x in range(6, 9)
         ]
-        room.place_object(9, 7, black)  # town black
+        room.place_object(9, 7, black_sid(room))  # town black
         assert room._all_objects_placed()
 
     def test_game_state_is_move_soldiers(self, room: Room):
@@ -65,14 +70,12 @@ class TestRoom:
 
     def test_white_move_soldier(self, room: Room):
         self.test_black_place_all(room)
-        white: str = next((k for k, v in room.players.items() if v == Spieler.WHITE))
-        data = {"startX": 3, "startY": 1, "endX": 4, "endY": 1, "sid": white}
+        data = {"startX": 3, "startY": 1, "endX": 4, "endY": 1, "sid": white_sid(room)}
         room.move_soldier(**data)
         assert room.board[data.get("endX")][data.get("endY")] == WHITE
 
     def test_black_move_soldier(self, room: Room):
         self.test_white_move_soldier(room)
-        black: str = next((k for k, v in room.players.items() if v == Spieler.BLACK))
-        data = {"startX": 6, "startY": 0, "endX": 5, "endY": 0, "sid": black}
+        data = {"startX": 6, "startY": 0, "endX": 5, "endY": 0, "sid": black_sid(room)}
         room.move_soldier(**data)
         assert room.board[data.get("endX")][data.get("endY")] == BLACK

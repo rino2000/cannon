@@ -171,6 +171,15 @@ class Room:
             print(f"ziel koordinate {endX, endY} ist nicht frei")
             return None
 
+        if (
+            spieler == Spieler.WHITE
+            and (startX - endX) == 1
+            or spieler == Spieler.BLACK
+            and (startX - endX) == -1
+        ):
+            print(f"soldat: {soldier} darf nicht 1 schritt nachhinten")
+            return None
+
         if abs(endY - startY) > 1 or abs(endX - startX) > 1:
             print("soldat darf nur 1 schritt in allen richtungen")
             return None
