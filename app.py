@@ -156,8 +156,6 @@ class Room:
             print("nicht in move soldaten gamestate")
             return None
 
-        spieler = self._get_player(sid)
-
         if not (
             self._validate_coordinate(startX, startY)
             and self._validate_coordinate(endX, endY)
@@ -165,18 +163,24 @@ class Room:
             print(f"Koordinaten sind nicht valide {startX, startY} {endX, endY}")
             return None
 
+        spieler = self._get_player(sid)
         soldier = WHITE if spieler == Spieler.WHITE else BLACK
 
-        if self.board[endX][endY] != EMPTY:
-            print(f"ziel koordinate {endX, endY} ist nicht frei")
-            return None
-
         if self._check_threat(startX, startY, spieler):
-            if (endX, endY) in self._all_possible_thread_moves(startX, startY, spieler):
+            if (endX, endY) in chain.from_iterable(
+                self._check_interception_thread_move(startX, startY, spieler)
+            ):
                 print(f"thread move {endX, endY} moved")
                 self.board[startX][startY] = EMPTY
                 self.board[endX][endY] = soldier
                 return self.board
+
+        if (endX, endY) in self._check_capture_soldier(startX, startY, spieler):
+            return self.capture_soldier(startX, startY, endX, endY, spieler)
+
+        if self.board[endX][endY] != EMPTY:
+            print(f"ziel koordinate {endX, endY} ist nicht frei")
+            return None
 
         if (
             spieler == Spieler.WHITE
@@ -199,19 +203,19 @@ class Room:
             print(f"nicht dein soldat {soldier}")
             return None
 
-        if (endX, endY) in self._check_capture_soldier(startX, startY, spieler):
-            return self._capture(startX, startY, endX, endY, spieler)
-
         self.board[startX][startY] = EMPTY
         self.board[endX][endY] = soldier
         return self.board
 
-    def _check_capture_soldier(self, x: int, y: int, spieler: Spieler):
+    def _check_capture_soldier(
+        self, x: int, y: int, spieler: Spieler
+    ) -> List[Tuple[int, int]]:
+        """Return list of all possible coordinates where opponent is in to capture"""
 
-        enemy_color = WHITE if spieler == Spieler.BLACK else BLACK
+        opponent = WHITE if spieler == Spieler.BLACK else BLACK
         direction = 1 if spieler == Spieler.WHITE else -1
 
-        fields = [
+        coords = [
             (x, y - 1),  # left
             (x, y + 1),  # right
             (x + direction, y),  # above
@@ -219,11 +223,8 @@ class Room:
             (x + direction, y + 1),  # diagonally right
         ]
 
-        check = filter(lambda c: self._validate_coordinate(*c), fields)
-        possible = filter(lambda x: self.board[x[0]][x[1]] == enemy_color, check)
-        check = all(map(lambda c: self._validate_coordinate(*c), possible))
-
-        return possible if check else ()
+        validate = filter(lambda c: self._validate_coordinate(*c), coords)
+        return list(filter(lambda x: self.board[x[0]][x[1]] == opponent, validate))
 
     def _capture_soldier(self, spieler: Spieler) -> None:
         with self._lock:
@@ -232,26 +233,19 @@ class Room:
             else:
                 self.black_captured += 1
 
-    def _capture(
+    def capture_soldier(
         self, startX: int, startY: int, endX: int, endY: int, spieler: Spieler
     ) -> Optional[Field]:
-        if not self._validate_coordinate(
-            startX, startY
-        ) and not self._validate_coordinate(endX, endY):
-            print("coordinaten sind nicht valide")
-            return None
 
         soldier = WHITE if spieler == Spieler.WHITE else BLACK
 
-        capturable = self._check_capture_soldier(startX, startY, spieler)
-
-        if (endX, endY) not in capturable:
-            print("Kein soldier auf zu capturen")
+        if (endX, endY) not in self._check_capture_soldier(startX, startY, spieler):
+            print("Kein soldier zu capturen")
             return None
 
-        enemy_soldier = WHITE if spieler == Spieler.BLACK else BLACK
+        opponent = WHITE if spieler == Spieler.BLACK else BLACK
 
-        if self.board[endX][endY] == enemy_soldier:
+        if self.board[endX][endY] == opponent:
             self._capture_soldier(
                 Spieler.WHITE if spieler == Spieler.BLACK else Spieler.BLACK
             )
@@ -260,7 +254,6 @@ class Room:
             self.board[endX][endY] = soldier
 
             print(f"soldat captured {endX, endY}")
-            return self.board
 
         return self.board
 
@@ -268,20 +261,21 @@ class Room:
         direction = 1 if spieler == Spieler.WHITE else -1
         opponent = WHITE if spieler == Spieler.BLACK else BLACK
 
-        fields = [
+        coords = [
             (x, y - 1),  # left
             (x, y + 1),  # right
-            (x + direction, y),  # above
-            (x + direction, y - 1),  # diagonally right
-            (x + direction, y + 1),  # diagonally left
+            (x + 1 * direction, y),  # above
+            (x + 1 * direction, y - 1),  # diagonally right
+            (x + 1 * direction, y + 1),  # diagonally left
         ]
-        validate_coordinates = filter(lambda c: self._validate_coordinate(*c), fields)
-        m = map(lambda x: self.board[x[0]][x[1]] == opponent, validate_coordinates)
-        return any(m)
+        valide_coords = filter(lambda c: self._validate_coordinate(*c), coords)
+        check_thread = map(lambda x: self.board[x[0]][x[1]] == opponent, valide_coords)
+        return any(check_thread)
 
-    def _check_interception(
+    def _check_interception_thread_move(
         self, x: int, y: int, spieler: Spieler
     ) -> List[Tuple[Tuple[int, int]]]:
+        """Return list of all possible thread moves"""
 
         direction = 1 if spieler == Spieler.WHITE else -1
 
@@ -637,11 +631,11 @@ if __name__ == "__main__":
     # r._place_soldier(4, 5, Spieler.WHITE)
     # r._place_soldier(5, 5, Spieler.BLACK)
     # r._place_soldier(7, 5, Spieler.WHITE)
-    # print(r._check_interception(5, 5, Spieler.BLACK))
+    # print(r._check_interception_thread_move(5, 5, Spieler.BLACK))
 
     # pprint(r.board)
     # print()
-    # print(r._check_interception(5, 5, Spieler.BLACK))
+    # print(r._check_interception_thread_move(5, 5, Spieler.BLACK))
     # print(r._all_possible_thread_moves(5, 5, Spieler.BLACK))
     # r.gameState = GameState.MOVE_SOLDATEN
     # pprint(r.move_soldier(5, 5, 7, 7, black_sid)) #thread move right diagonally
@@ -758,17 +752,34 @@ if __name__ == "__main__":
     # r._place_soldier(3, 2, Spieler.WHITE)
     # [
     #     r._place_soldier(*x, Spieler.BLACK)
-    #     for x in chain.from_iterable(r._check_interception(2, 1, Spieler.BLACK))
+    #     for x in chain.from_iterable(r._check_interception_thread_move(2, 1, Spieler.BLACK))
     # ]
 
-    r.gameState = GameState.MOVE_SOLDATEN
-    r._place_soldier(5, 5, Spieler.BLACK)  # move backwards thread for white
-    r._place_soldier(4, 5, Spieler.WHITE)
-    r._place_soldier(2, 3, Spieler.BLACK)
-    [
-        r._place_soldier(*x, Spieler.WHITE)
-        for x in chain.from_iterable(r._check_interception(4, 5, Spieler.WHITE))
-    ]
+    # r.gameState = GameState.MOVE_SOLDATEN
+    # r._place_soldier(5, 5, Spieler.BLACK)  # move backwards thread for white
+    # r._place_soldier(4, 5, Spieler.WHITE)
+    # r._place_soldier(2, 3, Spieler.BLACK)
+    # [
+    #     r._place_soldier(*x, Spieler.WHITE)
+    #     for x in chain.from_iterable(r._check_interception_thread_move(4, 5, Spieler.WHITE))
+    # ]
+
+    # r.gameState = GameState.MOVE_SOLDATEN
+    # r._place_soldier(5, 5, Spieler.BLACK)  # check capture soldier white
+    # r._place_soldier(4, 5, Spieler.WHITE)
+
+    # pprint(r.move_soldier(5, 5, 4, 5, black_sid))
+    # print(r.white_captured, r.black_captured)
+
+    # pprint(r.board)
+
+    # r.gameState = GameState.MOVE_SOLDATEN
+    # r._place_soldier(5, 5, Spieler.BLACK)  # check capture soldier black
+    # r._place_soldier(4, 5, Spieler.WHITE)
+
+    # pprint(r.move_soldier(4, 5, 5, 5, white_sid))
+    # print(r.white_captured, r.black_captured)
 
     pprint(r.board)
+
     rooms.pop(r.name, None)
