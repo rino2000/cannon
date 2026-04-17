@@ -88,7 +88,7 @@ class Room:
 
     def _count_objects(self, spieler: Spieler) -> Tuple[int, int]:
         color = WHITE if spieler == Spieler.WHITE else BLACK
-        c = Counter(chain(*self.board))
+        c = Counter(chain.from_iterable(self.board))
         soldiers = c[WHITE if color == WHITE else BLACK]
         town = c[TOWN_WHITE if color == WHITE else TOWN_BLACK]
         return (soldiers, town)
@@ -167,8 +167,8 @@ class Room:
         soldier = WHITE if spieler == Spieler.WHITE else BLACK
 
         if self._check_threat(startX, startY, spieler):
-            if (endX, endY) in chain.from_iterable(
-                self._check_interception_thread_move(startX, startY, spieler)
+            if (endX, endY) in self._check_interception_thread_move(
+                startX, startY, spieler
             ):
                 print(f"thread move {endX, endY} moved")
                 self.board[startX][startY] = EMPTY
@@ -249,10 +249,8 @@ class Room:
             self._capture_soldier(
                 Spieler.WHITE if spieler == Spieler.BLACK else Spieler.BLACK
             )
-
             self.board[startX][startY] = EMPTY
             self.board[endX][endY] = soldier
-
             print(f"soldat captured {endX, endY}")
 
         return self.board
@@ -274,7 +272,7 @@ class Room:
 
     def _check_interception_thread_move(
         self, x: int, y: int, spieler: Spieler
-    ) -> List[Tuple[Tuple[int, int]]]:
+    ) -> List[Tuple[int, int]]:
         """Return list of all possible thread moves"""
 
         direction = 1 if spieler == Spieler.WHITE else -1
@@ -310,7 +308,13 @@ class Room:
             if self.board[x[0]][x[1]] or self.board[y[0]][y[1]] in interception:
                 all_possible_coords.remove(coord)
 
-        return all_possible_coords
+        # return the biggest or smalest coordinate in tuple because the player are only
+        # allowed to move 2 fields back and not 1 field
+        return (
+            list(map(max, all_possible_coords))
+            if spieler == Spieler.BLACK
+            else list(map(min, all_possible_coords))
+        )
 
     def _check_cannon_coordinates(self, endX: int, endY: int, spieler: Spieler):
         direction = 1 if spieler == Spieler.WHITE else -1
@@ -780,6 +784,29 @@ if __name__ == "__main__":
     # pprint(r.move_soldier(4, 5, 5, 5, white_sid))
     # print(r.white_captured, r.black_captured)
 
-    pprint(r.board)
+    # r.gameState = GameState.MOVE_SOLDATEN
+    # r._place_soldier(5, 5, Spieler.BLACK)  # check thread move soldier black 2 back
+    # pprint(r.move_soldier(5, 5, 7, 5, black_sid))
+    # r._place_soldier(
+    #     5, 5, Spieler.BLACK
+    # )  # check thread move soldier black 2 back diagonally left
+    # pprint(r.move_soldier(5, 5, 7, 3, black_sid))
+    # r._place_soldier(
+    #     5, 5, Spieler.BLACK
+    # )  # check thread move soldier black 2 back diagonally right
+    # pprint(r.move_soldier(5, 5, 7, 7, black_sid))
+    # r._place_soldier(4, 5, Spieler.WHITE)
+    # pprint(r.board)
 
+    # r.gameState = GameState.MOVE_SOLDATEN
+    # r._place_soldier(4, 5, Spieler.WHITE)
+    # r._place_soldier(5, 5, Spieler.BLACK)
+    # pprint(r.move_soldier(4, 5, 2, 5, white_sid)) check thread move soldier white 2 back
+    # pprint(r.move_soldier(4, 5, 2, 3, white_sid)) check thread move soldier white 2 right diagonally
+    # pprint(r.move_soldier(4, 5, 2, 7, white_sid)) check thread move soldier white 2 left diagonally
+
+    # pprint(r.board)
+    # print()
+
+    pprint(r.board)
     rooms.pop(r.name, None)
