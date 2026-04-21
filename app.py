@@ -316,55 +316,66 @@ class Room:
             else list(map(min, all_possible_coords))
         )
 
-    def _check_cannon_coordinates(self, endX: int, endY: int, spieler: Spieler):
-        direction = 1 if spieler == Spieler.WHITE else -1
+    def _check_cannon_coordinates(
+        self, endX: int, endY: int, spieler: Spieler
+    ) -> List[Tuple[Tuple[int, int], Tuple[int, int]]]:
 
+        direction = 1 if spieler == Spieler.WHITE else -1
         coords = []
 
-        vertical_coords = [
-            (endX + 1 * direction, endY),
-            (endX + 2 * direction, endY),
-            (endX - 1 * direction, endY),
-            (endX - 2 * direction, endY),
+        vertical = [
+            # bottom vertical
+            ((endX + 1 * direction, endY), (endX + 2 * direction, endY)),
+            # top vertical
+            ((endX - 1 * direction, endY), (endX - 2 * direction, endY)),
+            # between vertical
+            ((endX + 1 * direction, endY), (endX - 1 * direction, endY)),
         ]
-        coords.extend(vertical_coords)
+        coords.extend(vertical)
 
-        diagonal_coords = [
-            (endX + 1 * direction, endY - 1),
-            (endX + 2 * direction, endY - 2),
-            (endX + 1 * direction, endY + 1),
-            (endX + 2 * direction, endY + 2),
-            (endX - 1 * direction, endY - 1),
-            (endX - 2 * direction, endY - 2),
-            (endX - 1 * direction, endY + 1),
-            (endX - 2 * direction, endY + 2),
+        diagonally_right = [
+            # bottom digonally right up
+            ((endX + 1 * direction, endY + 1), (endX + 2 * direction, endY + 2)),
+            # top digonally right down
+            ((endX - 1 * direction, endY - 1), (endX - 2 * direction, endY - 2)),
+            # between digonally right
+            ((endX + 1 * direction, endY + 1), (endX - 1 * direction, endY - 1)),
         ]
-        coords.extend(diagonal_coords)
 
-        return list(set(filter(lambda c: self._validate_coordinate(*c), coords)))
+        coords.extend(diagonally_right)
 
-    def _check_cannon_interception(self, x: int, y: int, spieler: Spieler) -> bool:
+        diagonally_left = [
+            # bottom digonally left up
+            ((endX + 1 * direction, endY - 1), (endX + 2 * direction, endY - 2)),
+            # top digonally left down
+            ((endX - 1 * direction, endY + 1), (endX - 2 * direction, endY + 2)),
+            # between left right
+            ((endX + 1 * direction, endY - 1), (endX - 1 * direction, endY + 1)),
+        ]
+
+        coords.extend(diagonally_left)
+
+        return list(
+            batched(filter(lambda c: self._validate_coordinate(*c), chain(*coords)), 2)
+        )
+
+    def _get_all_cannon_pairs(
+        self, x: int, y: int, spieler: Spieler
+    ) -> List[Tuple[Tuple[int, int], Tuple[int, int]]]:
+        """Return a list of all coords pairs where soldiers are in (filter interception)"""
+        all_possible_coords = self._check_cannon_coordinates(x, y, spieler)
         soldier = WHITE if spieler == Spieler.WHITE else BLACK
-        opponent = BLACK if spieler == Spieler.WHITE else WHITE
 
-        cannon_coords = self._check_cannon_coordinates(x, y, spieler)
-        soldier_coords = [
-            coord
-            for coord in cannon_coords
-            if self.board[coord[0]][coord[1]] == soldier
-        ]
+        def is_valid_pair(coords: Tuple[Tuple[int, int], Tuple[int, int]]) -> bool:
+            return (
+                self.board[coords[0][0]][coords[0][1]] == soldier
+                and self.board[coords[1][0]][coords[1][1]] == soldier
+            )
 
-        if len(soldier_coords) < 2:
-            return False
+        return list(filterfalse(lambda c: not is_valid_pair(c), all_possible_coords))
 
-        for x, y in soldier_coords:
-            if self.board[x][y] in [opponent, TOWN_WHITE, TOWN_BLACK]:
-                return False
-
-        return True
-
-    def _check_create_cannon(self, endX: int, endY: int, spieler: Spieler) -> bool:
-        return self._check_cannon_interception(endX, endY, spieler)
+    def _can_create_cannon(self, endX: int, endY: int, spieler: Spieler) -> bool:
+        return len(list(chain(*self._get_all_cannon_pairs(endX, endY, spieler)))) >= 2
 
     def _get_all_cannons(self, x: int, y: int, spieler: Spieler):
         direction = 1 if spieler == Spieler.WHITE else -1
@@ -808,5 +819,10 @@ if __name__ == "__main__":
     # pprint(r.board)
     # print()
 
+    """Test create cannon"""
+    r._place_soldier(4, 5, Spieler.BLACK)
+    r._place_soldier(5, 5, Spieler.BLACK)
+    print(r._can_create_cannon(6, 5, Spieler.BLACK))
+
     pprint(r.board)
-    rooms.pop(r.name, None)
+    rooms.pop(r.name)
