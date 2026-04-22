@@ -294,7 +294,7 @@ class Room:
 
         # valide coordinates
         valide_coords = batched(
-            map(lambda c: self._validate_coordinate(*c), chain.from_iterable(coords)), 2
+            map(lambda c: self._validate_coordinate(*c), chain(*coords)), 2
         )
 
         # filter all tuple coords where False is in
@@ -418,12 +418,12 @@ class Room:
         return valide
 
     def _get_cannon_gun_axis(
-        self, coords: List[Tuple[Tuple[int, int]]], spieler: Spieler
+        self, coords: List[Tuple[Tuple[int, int], Tuple[int, int]]], spieler: Spieler
     ) -> Tuple[int, int]:
         return (
-            min(chain.from_iterable(coords), key=lambda x: x[0])
+            min(chain(*coords), key=lambda x: x[0])
             if spieler == Spieler.WHITE
-            else max(chain.from_iterable(coords), key=lambda x: x[0])
+            else max(chain(*coords), key=lambda x: x[0])
         )
 
     def _check_cannon_shoot_interception(
@@ -439,7 +439,9 @@ class Room:
             (x + 3 * direction, y - 3),  # diagonal links
         ]
 
-        return any([self.board[x][y] == opponent for x, y in interceptions])
+        check = filter(lambda c: self._validate_coordinate(*c), interceptions)
+        interceptions = map(lambda c: self.board[c[0]][c[1]] == opponent, check)
+        return any(interceptions)
 
     def _check_cannon_shoot_validate(self, startX: int, startY: int, spieler: Spieler):
 
@@ -492,9 +494,7 @@ class Room:
 
         direction = 1 if spieler == Spieler.WHITE else -1
 
-        all_cannons = list(
-            chain.from_iterable(self._get_all_cannons(startX, startY, spieler))
-        )
+        all_cannons = list(chain(*self._get_all_cannons(startX, startY, spieler)))
 
         up = map(lambda c: (c[0] + 1 * direction, c[1]), all_cannons)
         down = map(lambda c: (c[0] - 1 * direction, c[1]), all_cannons)
@@ -542,7 +542,7 @@ class Room:
 
         cannons = self._get_all_cannons(startX, startY, spieler)
 
-        if not cannons or (startX, startY) not in chain.from_iterable(cannons):
+        if not cannons or (startX, startY) not in chain(*cannons):
             print(f"{startX, startY} gibt keine cannons")
             return None
 
@@ -550,7 +550,7 @@ class Room:
         possibles = self._check_all_possbible_cannon_moves(*axis, spieler)
         filterd = self._check_cannon_move_target_field_is_empty(possibles, spieler)
 
-        if not filterd or (endX, endY) not in chain.from_iterable(filterd):
+        if not filterd or (endX, endY) not in chain(*filterd):
             print("no possible cannons to move")
             return None
 
@@ -558,10 +558,10 @@ class Room:
 
         move = sorted(filter(lambda x: (endX, endY) in x, filterd), key=lambda x: x[0])
 
-        for x, y in chain.from_iterable(cannons):
+        for x, y in chain(*cannons):
             self.board[x][y] = EMPTY
 
-        for x, y in chain.from_iterable(move):
+        for x, y in chain(*move):
             self.board[x][y] = soldier
         return self.board
 
@@ -819,10 +819,50 @@ if __name__ == "__main__":
     # pprint(r.board)
     # print()
 
-    """Test create cannon"""
-    r._place_soldier(4, 5, Spieler.BLACK)
-    r._place_soldier(5, 5, Spieler.BLACK)
-    print(r._can_create_cannon(6, 5, Spieler.BLACK))
+    # """Test create cannon"""
+    # r._place_soldier(4, 5, Spieler.BLACK)
+    # r._place_soldier(5, 5, Spieler.BLACK)
+    # print(r._can_create_cannon(6, 5, Spieler.BLACK))
+
+    """Test cannon shoot"""
+    # r._place_soldier(2, 3, Spieler.WHITE)
+    # r._place_soldier(3, 3, Spieler.WHITE)
+    # r._place_soldier(3, 7, Spieler.WHITE)
+    # r._place_soldier(2, 8, Spieler.WHITE)
+
+    # r._place_soldier(5, 3, Spieler.BLACK)
+    # r._place_soldier(6, 3, Spieler.BLACK)
+    # r._place_soldier(7, 3, Spieler.BLACK)
+    # r._place_soldier(6, 4, Spieler.BLACK)
+    # r._place_soldier(5, 5, Spieler.BLACK)
+    # r._place_soldier(6, 5, Spieler.BLACK)
+
+    # r._place_soldier(1, 3, Spieler.WHITE)
+    # r._place_soldier(2, 3, Spieler.WHITE)
+    # r._place_soldier(3, 3, Spieler.WHITE)
+
+    # r._place_soldier(2, 4, Spieler.WHITE)
+    # r._place_soldier(2, 5, Spieler.WHITE)
+    # r._place_soldier(3, 5, Spieler.WHITE)
+
+    # r._place_soldier(5, 3, Spieler.BLACK)
+    # r._place_soldier(6, 3, Spieler.BLACK)
+
+    # r._place_soldier(5, 7, Spieler.BLACK)
+    # r._place_soldier(6, 8, Spieler.BLACK)
+
+    # all_cannons = r._get_all_cannons(1, 3, Spieler.WHITE)
+    # print(all_cannons)
+    # cannon_axis = r._get_cannon_gun_axis(all_cannons, Spieler.WHITE)
+    # print(cannon_axis)
+
+    # pprint(r.board)
+    # pprint(r._cannon_shoot(*cannon_axis, 5, 3, Spieler.WHITE))
+    # pprint(r._cannon_shoot(*cannon_axis, 6, 3, Spieler.WHITE))
+
+    # pprint(r._cannon_shoot(*cannon_axis, 5, 7, Spieler.WHITE))
+    # pprint(r._cannon_shoot(*cannon_axis, 6, 8, Spieler.WHITE))
 
     pprint(r.board)
+
     rooms.pop(r.name)
