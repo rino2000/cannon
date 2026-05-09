@@ -507,8 +507,7 @@ class Room:
         """Return list of all coord pairs after calculate axis swap that are cannons"""
 
         axis = self._get_cannon_axis(cannons)
-        is_white = spieler == Spieler.WHITE
-        direction = 1 if is_white else -1
+        direction = 1 if spieler == Spieler.WHITE else -1
 
         # (axis coord ,possible coord)
         coords: List[Tuple[Tuple[int, int]], Tuple[int, int]] = []
@@ -517,11 +516,15 @@ class Room:
             top, bottom = x
             # vertical
             coords.append(((top), (top[0] - 3 * direction, top[1])))
+            coords.append(((top), (top[0] + 3 * direction, bottom[1])))
             coords.append(((bottom), (bottom[0] + 3 * direction, bottom[1])))
+            coords.append(((bottom), (bottom[0] - 3 * direction, bottom[1])))
 
             # diagonally left
             coords.append(((top), (top[0] - 3 * direction, top[1] + 3)))
+            coords.append(((top), (top[0] + 3 * direction, top[1] + 3)))
             coords.append(((bottom), (bottom[0] + 3 * direction, bottom[1] - 3)))
+            coords.append(((bottom), (bottom[0] - 3 * direction, bottom[1] - 3)))
 
             # diagonally right
             coords.append(((top), (top[0] - 3 * direction, top[1] - 3)))
@@ -554,6 +557,7 @@ class Room:
     ) -> Optional[Field]:
 
         cannons = self._get_all_cannons(startX, startY, spieler)
+        print(cannons)
 
         if not cannons or ((startX, startY) not in chain(*cannons)):
             print(f"{startX, startY} gibt keine cannons")
@@ -896,23 +900,39 @@ if __name__ == "__main__":
     # r._place_soldier(4, 4, Spieler.WHITE)
     # r._place_soldier(2, 2, Spieler.WHITE)
 
-    r._place_soldier(5, 5, Spieler.BLACK)
-    r._place_soldier(6, 5, Spieler.BLACK)
-    r._place_soldier(7, 5, Spieler.BLACK)
+    # r._place_soldier(5, 5, Spieler.BLACK)
+    # r._place_soldier(6, 5, Spieler.BLACK)
+    # r._place_soldier(7, 5, Spieler.BLACK)
 
-    r._place_soldier(6, 4, Spieler.BLACK)
-    r._place_soldier(5, 3, Spieler.BLACK)
-    r._place_soldier(6, 3, Spieler.BLACK)
+    # r._place_soldier(6, 4, Spieler.BLACK)
+    # r._place_soldier(5, 3, Spieler.BLACK)
+    # r._place_soldier(6, 3, Spieler.BLACK)
 
-    pprint(r.board)
+    # pprint(r.board)
 
     # move_cannon = r.move_cannon(5, 5, 8, 5, Spieler.BLACK) #horizontal down
     # move_cannon = r.move_cannon(7, 5, 4, 5, Spieler.BLACK) #horizontal up
     # move_cannon = r.move_cannon(6, 3, 6, 6, Spieler.BLACK)  # vertical right
     # move_cannon = r.move_cannon(6, 5, 6, 2, Spieler.BLACK)  # vertical left
     # move_cannon = r.move_cannon(7, 5, 4, 2, Spieler.BLACK)  # diagonal left up
-    move_cannon = r.move_cannon(5, 3, 8, 6, Spieler.BLACK)  # diagonal right down
+    # move_cannon = r.move_cannon(5, 3, 8, 6, Spieler.BLACK)  # diagonal right down
 
+    r._place_soldier(3, 3, Spieler.WHITE)
+    r._place_soldier(4, 3, Spieler.WHITE)
+    r._place_soldier(5, 3, Spieler.WHITE)
+
+    r._place_soldier(4, 2, Spieler.WHITE)
+    r._place_soldier(4, 1, Spieler.WHITE)
+    r._place_soldier(5, 1, Spieler.WHITE)
+
+    pprint(r.board)
+
+    # move_cannon = r.move_cannon(3, 3, 6, 3, Spieler.WHITE)  # horizontal down
+    # move_cannon = r.move_cannon(5, 3, 2, 3, Spieler.WHITE)  # horizontal up
+    # move_cannon = r.move_cannon(4, 1, 4, 4, Spieler.WHITE)  # vertical right
+    # move_cannon = r.move_cannon(4, 3, 4, 0, Spieler.WHITE)  # vertical left
+    # move_cannon = r.move_cannon(5, 5, 2, 2, Spieler.WHITE)  # diagonal left up
+    move_cannon = r.move_cannon(3, 3, 6, 6, Spieler.WHITE)  # diagonal right down
     pprint(move_cannon)
 
     rooms.pop(r.name)
