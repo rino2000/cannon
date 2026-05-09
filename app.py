@@ -2,7 +2,7 @@ import random
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import IntEnum
-from itertools import batched, chain, compress, filterfalse
+from itertools import batched, chain, compress, filterfalse, starmap
 from pprint import pprint
 from threading import Lock
 from typing import Dict, List, Optional, Tuple
@@ -67,9 +67,7 @@ class Room:
         return color
 
     def _validate_coordinate(self, x: int, y: int) -> bool:
-        checkX = 0 <= x < BOARD_SIZE
-        checkY = 0 <= y < BOARD_SIZE
-        return checkX and checkY
+        return (0 <= x < BOARD_SIZE) and (0 <= y < BOARD_SIZE)
 
     def place_object(self, x: int, y: int, sid: str) -> Optional[Field]:
         spieler = self._get_player(sid)
@@ -156,6 +154,8 @@ class Room:
             print("nicht in move soldaten gamestate")
             return None
 
+        spieler = self._get_player(sid)
+
         if not (
             self._validate_coordinate(startX, startY)
             and self._validate_coordinate(endX, endY)
@@ -163,7 +163,6 @@ class Room:
             print(f"Koordinaten sind nicht valide {startX, startY} {endX, endY}")
             return None
 
-        spieler = self._get_player(sid)
         soldier = WHITE if spieler == Spieler.WHITE else BLACK
 
         if self._check_threat(startX, startY, spieler):
@@ -171,9 +170,7 @@ class Room:
                 startX, startY, spieler
             ):
                 print(f"thread move {endX, endY} moved")
-                self.board[startX][startY] = EMPTY
-                self.board[endX][endY] = soldier
-                return self.board
+                return self._swap(startX, startY, endX, endY, spieler)
 
         if (endX, endY) in self._check_capture_soldier(startX, startY, spieler):
             return self.capture_soldier(startX, startY, endX, endY, spieler)
@@ -203,9 +200,7 @@ class Room:
             print(f"nicht dein soldat {soldier}")
             return None
 
-        self.board[startX][startY] = EMPTY
-        self.board[endX][endY] = soldier
-        return self.board
+        return self._swap(startX, startY, endX, endY, spieler)
 
     def _check_capture_soldier(
         self, x: int, y: int, spieler: Spieler
@@ -237,8 +232,6 @@ class Room:
         self, startX: int, startY: int, endX: int, endY: int, spieler: Spieler
     ) -> Optional[Field]:
 
-        soldier = WHITE if spieler == Spieler.WHITE else BLACK
-
         if (endX, endY) not in self._check_capture_soldier(startX, startY, spieler):
             print("Kein soldier zu capturen")
             return None
@@ -249,9 +242,8 @@ class Room:
             self._capture_soldier(
                 Spieler.WHITE if spieler == Spieler.BLACK else Spieler.BLACK
             )
-            self.board[startX][startY] = EMPTY
-            self.board[endX][endY] = soldier
             print(f"soldat captured {endX, endY}")
+            return self._swap(startX, startY, endX, endY, spieler)
 
         return self.board
 
@@ -319,6 +311,7 @@ class Room:
     def _check_cannon_coordinates(
         self, endX: int, endY: int, spieler: Spieler
     ) -> List[Tuple[Tuple[int, int], Tuple[int, int]]]:
+        """Return all possibles cannon coordinates from a selected cannon coordinate"""
 
         direction = 1 if spieler == Spieler.WHITE else -1
         coords = []
@@ -330,6 +323,12 @@ class Room:
             ((endX - 1 * direction, endY), (endX - 2 * direction, endY)),
             # between vertical
             ((endX + 1 * direction, endY), (endX - 1 * direction, endY)),
+            # waagerecht zwischen 2
+            ((endX, endY - 1), (endX, endY + 1)),
+            # waagerecht links 2
+            ((endX, endY - 1), (endX, endY - 2)),
+            # waagerecht rechts 2
+            ((endX, endY + 1), (endX, endY + 2)),
         ]
         coords.extend(vertical)
 
@@ -341,7 +340,6 @@ class Room:
             # between digonally right
             ((endX + 1 * direction, endY + 1), (endX - 1 * direction, endY - 1)),
         ]
-
         coords.extend(diagonally_right)
 
         diagonally_left = [
@@ -352,55 +350,63 @@ class Room:
             # between left right
             ((endX + 1 * direction, endY - 1), (endX - 1 * direction, endY + 1)),
         ]
-
         coords.extend(diagonally_left)
 
         return list(
-            batched(filter(lambda c: self._validate_coordinate(*c), chain(*coords)), 2)
+            batched(
+                filter(lambda c: self._validate_coordinate(*c), chain(*coords)),
+                2,
+            )
         )
 
-    def _get_all_cannon_pairs(
+    def _get_all_cannons(
         self, x: int, y: int, spieler: Spieler
-    ) -> List[Tuple[Tuple[int, int], Tuple[int, int]]]:
-        """Return a list of all coords pairs where soldiers are in (filter interception)"""
-        all_possible_coords = self._check_cannon_coordinates(x, y, spieler)
-        soldier = WHITE if spieler == Spieler.WHITE else BLACK
-
-        def is_valid_pair(coords: Tuple[Tuple[int, int], Tuple[int, int]]) -> bool:
-            return (
-                self.board[coords[0][0]][coords[0][1]] == soldier
-                and self.board[coords[1][0]][coords[1][1]] == soldier
-            )
-
-        return list(filterfalse(lambda c: not is_valid_pair(c), all_possible_coords))
-
-    def _can_create_cannon(self, endX: int, endY: int, spieler: Spieler) -> bool:
-        return len(list(chain(*self._get_all_cannon_pairs(endX, endY, spieler)))) >= 2
-
-    def _get_all_cannons(self, x: int, y: int, spieler: Spieler):
+    ) -> List[Tuple[Tuple[int, int]]]:
         direction = 1 if spieler == Spieler.WHITE else -1
         soldier = WHITE if spieler == Spieler.WHITE else BLACK
 
-        all_possible_coords = [
+        all_possible_coords: List[Tuple[Tuple[int, int], Tuple[int, int]]] = []
+
+        vertical = [
             # 2 druber
             ((x + 1 * direction, y), (x + 2 * direction, y)),
             # 2 drunter
             ((x - 1 * direction, y), (x - 2 * direction, y)),
             # zwischen 2 vertical
             ((x + 1 * direction, y), (x - 1 * direction, y)),
+        ]
+        all_possible_coords.extend(vertical)
+
+        diagonally_right = [
             # 2 digonal rechts boden
             ((x + 1 * direction, y + 1), (x + 2 * direction, y + 2)),
             # 2 digonal rechts spitze
             ((x - 1 * direction, y - 1), (x - 2 * direction, y - 2)),
             # 2 diagonal rechts zwischen
             ((x + 1 * direction, y + 1), (x - 1 * direction, y - 1)),
+            ((x - 1 * direction, y + 1), (x - 2 * direction, y + 2)),
+        ]
+        all_possible_coords.extend(diagonally_right)
+
+        diagonally_left = [
             # 2 digonal links boden
             ((x + 1 * direction, y - 1), (x + 2 * direction, y - 2)),
             # 2 digonal links spitze
             ((x - 1 * direction, y - 1), (x - 2 * direction, y - 2)),
             # 2 diagonal links zwischen
-            ((x + 1 * direction, y - 1), (x - 1 * direction, y - 1)),
+            ((x + 1 * direction, y - 1), (x - 1 * direction, y + 1)),
         ]
+        all_possible_coords.extend(diagonally_left)
+
+        horizontal = [
+            # waagerecht rechts
+            ((x, y - 1), (x, y - 2)),
+            # waagerecht rechts
+            ((x, y - 1), (x, y + 1)),
+            # waagerecht rechts
+            ((x, y + 1), (x, y + 2)),
+        ]
+        all_possible_coords.extend(horizontal)
 
         valide = []
 
@@ -408,10 +414,13 @@ class Room:
             if self._validate_coordinate(*first) and self._validate_coordinate(*second):
                 (xx, yy), (xxx, yyy) = first, second
 
+                # check if the selected coord is a soldier and the possible coords around
                 if (
                     self.board[x][y] == soldier
                     and self.board[xx][yy] == soldier
                     and self.board[xxx][yyy] == soldier
+                ) or (
+                    self.board[xx][yy] == soldier and self.board[xxx][yyy] == soldier
                 ):
                     valide.append((first, second, (x, y)))
 
@@ -420,11 +429,15 @@ class Room:
     def _get_cannon_gun_axis(
         self, coords: List[Tuple[Tuple[int, int], Tuple[int, int]]], spieler: Spieler
     ) -> Tuple[int, int]:
+        coords = list(chain(*coords))
         return (
-            min(chain(*coords), key=lambda x: x[0])
+            min(coords, key=lambda x: x[0])
             if spieler == Spieler.WHITE
-            else max(chain(*coords), key=lambda x: x[0])
+            else max(coords, key=lambda x: x[0])
         )
+
+    def _get_cannon_axis(self, coords: List[Tuple[Tuple[int, int], Tuple[int, int]]]):
+        return list(map(lambda x: (min(x), max(x)), coords))
 
     def _check_cannon_shoot_interception(
         self, x: int, y: int, spieler: Spieler
@@ -489,81 +502,76 @@ class Room:
         return self.board
 
     def _check_all_possbible_cannon_moves(
-        self, startX: int, startY: int, spieler: Spieler
-    ) -> List[List[Tuple[int, int]]]:
+        self, cannons: List[Tuple[Tuple[int, int]]], spieler: Spieler
+    ):
+        """Return list of all coord pairs after calculate axis swap that are cannons"""
 
-        direction = 1 if spieler == Spieler.WHITE else -1
+        axis = self._get_cannon_axis(cannons)
+        is_white = spieler == Spieler.WHITE
+        direction = 1 if is_white else -1
 
-        all_cannons = list(chain(*self._get_all_cannons(startX, startY, spieler)))
+        # (axis coord ,possible coord)
+        coords: List[Tuple[Tuple[int, int]], Tuple[int, int]] = []
 
-        up = map(lambda c: (c[0] + 1 * direction, c[1]), all_cannons)
-        down = map(lambda c: (c[0] - 1 * direction, c[1]), all_cannons)
-        left = map(lambda c: (c[0], c[1] - 1), all_cannons)
-        right = map(lambda c: (c[0], c[1] + 1), all_cannons)
+        for x in axis:
+            top, bottom = x
+            # vertical
+            coords.append(((top), (top[0] - 3 * direction, top[1])))
+            coords.append(((bottom), (bottom[0] + 3 * direction, bottom[1])))
 
-        up = filter(lambda c: self._validate_coordinate(*c), up)
-        down = filter(lambda c: self._validate_coordinate(*c), down)
-        left = filter(lambda c: self._validate_coordinate(*c), left)
-        right = filter(lambda c: self._validate_coordinate(*c), right)
+            # diagonally left
+            coords.append(((top), (top[0] - 3 * direction, top[1] + 3)))
+            coords.append(((bottom), (bottom[0] + 3 * direction, bottom[1] - 3)))
 
-        return list(filter(None, map(list, [up, down, left, right])))
+            # diagonally right
+            coords.append(((top), (top[0] - 3 * direction, top[1] - 3)))
+            coords.append(((bottom), (bottom[0] + 3 * direction, bottom[1] + 3)))
 
-    def _check_cannon_move_target_field_is_empty(
-        self,
-        all_possible_coord: List[List[Tuple[int, int]]],
-        spieler: Spieler,
-    ) -> List[List[Tuple[int, int]]]:
+            # horizontal
+            coords.append(((top), (top[0], top[1] + 3)))
+            coords.append(((bottom), (bottom[0], bottom[1] - 3)))
 
+        validate = set(filter(lambda c: self._validate_coordinate(*c[1]), coords))
+        cannons = list(map(lambda x: self._check_is_cannon(*x[1], spieler), validate))
+
+        return list(compress(validate, cannons))
+
+    def _swap(self, startX: int, startY: int, endX: int, endY: int, spieler: Spieler):
         soldier = WHITE if spieler == Spieler.WHITE else BLACK
+        self.board[startX][startY] = EMPTY
+        self.board[endX][endY] = soldier
+        print(f"move from {(startX, startY)} -> {(endX, endY)}")
+        return self.board
 
-        def is_soldier_or_empty(l: List[Tuple[int, int]]) -> bool:
-            return all(
-                map(
-                    lambda c: (
-                        (self.board[c[0]][c[1]] == soldier)
-                        or (self.board[c[0]][c[1]] == EMPTY)
-                    ),
-                    l,
-                )
-            )
-
-        valide = map(is_soldier_or_empty, all_possible_coord)
-        return list(compress(map(lambda x: x, all_possible_coord), valide))
+    def _check_is_cannon(
+        self, x: int, y: int, spieler: Spieler = Spieler.BLACK
+    ) -> bool:
+        cannons = self._get_all_cannons(x, y, spieler)
+        return any(map(lambda x: len(x) == 3, cannons))
 
     def move_cannon(
         self, startX: int, startY: int, endX: int, endY: int, spieler: Spieler
     ) -> Optional[Field]:
 
-        if not self._validate_coordinate(
-            startX, startY
-        ) and not self._validate_coordinate(endX, endY):
-            print(f"coordinaten sind invalide {startX, startY}")
-            return None
-
         cannons = self._get_all_cannons(startX, startY, spieler)
 
-        if not cannons or (startX, startY) not in chain(*cannons):
+        if not cannons or ((startX, startY) not in chain(*cannons)):
             print(f"{startX, startY} gibt keine cannons")
             return None
 
-        axis = self._get_cannon_gun_axis(cannons, spieler)
-        possibles = self._check_all_possbible_cannon_moves(*axis, spieler)
-        filterd = self._check_cannon_move_target_field_is_empty(possibles, spieler)
+        possible_moves = self._check_all_possbible_cannon_moves(cannons, spieler)
+        print(f"possible moves {possible_moves}")
 
-        if not filterd or (endX, endY) not in chain(*filterd):
-            print("no possible cannons to move")
+        coord = ((startX, startY), (endX, endY))
+        moves = list(filter(lambda move: coord == move, possible_moves))
+
+        target_coord = list(starmap(lambda _, target: target, moves))
+
+        if not moves or (coord[1] not in target_coord):
+            print(f"Move {coord} nicht moglich zu moven")
             return None
 
-        soldier = WHITE if spieler == Spieler.WHITE else BLACK
-
-        move = sorted(filter(lambda x: (endX, endY) in x, filterd), key=lambda x: x[0])
-
-        for x, y in chain(*cannons):
-            self.board[x][y] = EMPTY
-
-        for x, y in chain(*move):
-            self.board[x][y] = soldier
-        return self.board
+        return self._swap(startX, startY, endX, endY, spieler)
 
 
 rooms: Dict[str, Room] = {}
@@ -724,11 +732,6 @@ if __name__ == "__main__":
     # r._place_soldier(8, 0, Spieler.BLACK)
     # r._place_soldier(5, 0, Spieler.WHITE)
 
-    # pprint(r.board)
-    # c = r._check_all_possbible_cannon_moves(8, 0, Spieler.BLACK)
-    # print(r._check_cannon_move_target_field_is_empty(c, Spieler.BLACK))
-    # pprint(r.move_cannon(8, 0, 8, 1, Spieler.BLACK))
-
     # [
     #     r.place_object(x, y, white_sid)
     #     for y in range(0, 11)
@@ -863,6 +866,53 @@ if __name__ == "__main__":
     # pprint(r._cannon_shoot(*cannon_axis, 5, 7, Spieler.WHITE))
     # pprint(r._cannon_shoot(*cannon_axis, 6, 8, Spieler.WHITE))
 
+    # """Horizontal gerade schwarz"""
+    # r._place_soldier(5, 4, Spieler.BLACK)
+    # r._place_soldier(6, 4, Spieler.BLACK)
+    # r._place_soldier(7, 4, Spieler.BLACK)
+
+    # """Diagonal rechts schwarz"""
+    # r._place_soldier(6, 5, Spieler.BLACK)
+    # r._place_soldier(7, 4, Spieler.BLACK)
+    # r._place_soldier(5, 6, Spieler.BLACK)
+
+    # """Diagonal links schwarz"""
+    # r._place_soldier(6, 3, Spieler.BLACK)
+    # r._place_soldier(7, 4, Spieler.BLACK)
+    # r._place_soldier(5, 2, Spieler.BLACK)
+
+    # """Horzontal gerade weiss"""
+    # r._place_soldier(6, 4, Spieler.WHITE)
+    # r._place_soldier(5, 4, Spieler.WHITE)
+    # r._place_soldier(4, 4, Spieler.WHITE)
+
+    # """Diagonal rechts weiss"""
+    # r._place_soldier(5, 3, Spieler.WHITE)
+    # r._place_soldier(4, 4, Spieler.WHITE)
+    # r._place_soldier(6, 2, Spieler.WHITE)
+
+    # """Diagonal links weiss"""
+    # r._place_soldier(3, 3, Spieler.WHITE)
+    # r._place_soldier(4, 4, Spieler.WHITE)
+    # r._place_soldier(2, 2, Spieler.WHITE)
+
+    r._place_soldier(5, 5, Spieler.BLACK)
+    r._place_soldier(6, 5, Spieler.BLACK)
+    r._place_soldier(7, 5, Spieler.BLACK)
+
+    r._place_soldier(6, 4, Spieler.BLACK)
+    r._place_soldier(5, 3, Spieler.BLACK)
+    r._place_soldier(6, 3, Spieler.BLACK)
+
     pprint(r.board)
+
+    # move_cannon = r.move_cannon(5, 5, 8, 5, Spieler.BLACK) #horizontal down
+    # move_cannon = r.move_cannon(7, 5, 4, 5, Spieler.BLACK) #horizontal up
+    # move_cannon = r.move_cannon(6, 3, 6, 6, Spieler.BLACK)  # vertical right
+    # move_cannon = r.move_cannon(6, 5, 6, 2, Spieler.BLACK)  # vertical left
+    # move_cannon = r.move_cannon(7, 5, 4, 2, Spieler.BLACK)  # diagonal left up
+    move_cannon = r.move_cannon(5, 3, 8, 6, Spieler.BLACK)  # diagonal right down
+
+    pprint(move_cannon)
 
     rooms.pop(r.name)
