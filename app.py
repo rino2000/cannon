@@ -528,7 +528,9 @@ class Room:
 
             # diagonally right
             coords.append(((top), (top[0] - 3 * direction, top[1] - 3)))
+            coords.append(((top), (top[0] + 3 * direction, top[1] - 3)))
             coords.append(((bottom), (bottom[0] + 3 * direction, bottom[1] + 3)))
+            coords.append(((bottom), (bottom[0] - 3 * direction, bottom[1] + 3)))
 
             # horizontal
             coords.append(((top), (top[0], top[1] + 3)))
@@ -931,8 +933,8 @@ if __name__ == "__main__":
     # move_cannon = r.move_cannon(5, 3, 2, 3, Spieler.WHITE)  # horizontal up
     # move_cannon = r.move_cannon(4, 1, 4, 4, Spieler.WHITE)  # vertical right
     # move_cannon = r.move_cannon(4, 3, 4, 0, Spieler.WHITE)  # vertical left
-    # move_cannon = r.move_cannon(5, 5, 2, 2, Spieler.WHITE)  # diagonal left up
-    move_cannon = r.move_cannon(3, 3, 6, 6, Spieler.WHITE)  # diagonal right down
+    # move_cannon = r.move_cannon(3, 3, 6, 0, Spieler.WHITE)  # diagonal left up
+    move_cannon = r.move_cannon(5, 1, 2, 4, Spieler.WHITE)  # diagonal right down
     pprint(move_cannon)
 
     rooms.pop(r.name)
