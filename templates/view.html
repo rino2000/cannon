@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Cannon</title>
+    <title>Cannon - 10x10</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
       table {
@@ -14,164 +14,180 @@
         height: 30px;
         text-align: center;
         cursor: pointer;
+        font-size: 20px;
+      }
+      .selected {
+        background-color: lightblue;
       }
       #board {
         margin-top: 20px;
       }
-      .info {
-        margin: 10px 0;
-        color: red;
-      }
     </style>
   </head>
   <body>
-    <h1>
-      Cannon Soldaten White 👇🏻 Soldaten Black 👆🏿 Town White 🏠 Town Black 🏠
-    </h1>
-
-    <label>Room name: <input type="text" id="roomInput" /></label>
+    <h1>Cannon 👇🏻 White 👆🏿 Black 🏠 White Town 🏡 Black Town</h1>
+    <label>Room: <input type="text" id="roomInput" /></label>
     <button id="joinBtn">Join Room</button>
-
     <p id="info"></p>
     <p id="playerColor"></p>
-    <p id="playerPlaceSoldatenLeft"></p>
-    <table id="board"></table>
+    <div id="board"></div>
 
     <script>
-      const socket = io("http://127.0.0.1:8000", {
-        transports: ["polling"],
-      });
+      const BOARD_SIZE = 10;
+      const COL_LETTERS = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
+      const SOLDATEN_WHITE = "👇🏻";
+      const SOLDATEN_BLACK = "👆🏿";
+      const TOWN_WHITE = "🏠";
+      const TOWN_BLACK = "🏡";
 
-      let gameState = 0; // 0 = Place Soldaten, 1 = Move Soldaten
-      const moves = Object.freeze({
-        GERDEAUS: 0,
-        DIAGONAL_LINKS: 1,
-        DIAGONAL_RECHTS: 2,
-      });
-
+      let socket = io("http://127.0.0.1:8000", { transports: ["polling"] });
       let room = "";
-      let field = [];
-      let soldiers_left;
-      let player = 1; // 1 = White 2 = Black
-      const soldatenWhite = "👇🏻";
-      const soldatenBlack = "👆🏿";
-      let maxTowns = 1;
-      const townWhite = "🏠";
-      const townBlack = "🏡";
-      let selectedPiece = null; // {x, y} des ausgewählten Soldaten
+      let field = null;
+      let player = null;
+      let gameState = 0;
+      let selectedPiece = null;
 
-      const boardEl = document.getElementById("board");
+      const boardDiv = document.getElementById("board");
       const infoEl = document.getElementById("info");
+      const playerColorEl = document.getElementById("playerColor");
 
-      // Join Room with roomname
-      document.getElementById("joinBtn").addEventListener("click", () => {
-        const roomInput = document.getElementById("roomInput").value.trim();
-        if (!roomInput) return alert("Enter a room name!");
-        room = roomInput;
-        roomInput.innerHTML = "";
-        socket.emit("join_room", { room });
-      });
+      infoEl.innerText = "Enter a room name and click Join.";
 
-      const letters = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"];
+      document.getElementById("joinBtn").onclick = () => {
+        const name = document.getElementById("roomInput").value.trim();
+        if (!name) {
+          return alert("Enter room name");
+        }
+        room = name;
+        socket.emit("join_room", name);
+      };
 
       function drawField() {
-        boardEl.innerHTML = "";
+        if (!field) {
+          return;
+        }
 
-        // Draw grid rows
-        field.forEach((row, i) => {
+        boardDiv.innerHTML = "";
+        const table = document.createElement("table");
+
+        for (let i = 0; i < BOARD_SIZE; i++) {
           const tr = document.createElement("tr");
+          const th = document.createElement("td");
 
-          // Row number (0–9)
-          const label = document.createElement("td");
-          label.textContent = i;
-          label.style.fontWeight = "bold";
-          tr.appendChild(label);
+          th.textContent = i;
+          th.style.fontWeight = "bold";
+          th.style.backgroundColor = "#f0f0f0";
+          tr.appendChild(th);
 
-          row.forEach((cell, j) => {
+          for (let j = 0; j < BOARD_SIZE; j++) {
             const td = document.createElement("td");
-            td.textContent = cell === 0 ? "" : cell;
-            td.addEventListener("click", () => handleCellClick(i, j));
-            tr.appendChild(td);
-          });
+            const val = field[i][j];
 
-          boardEl.appendChild(tr);
-        });
+            let display = "";
+
+            if (val === 1) {
+              display = SOLDATEN_WHITE;
+            } else if (val === 2) {
+              display = SOLDATEN_BLACK;
+            } else if (val === 3) {
+              display = TOWN_WHITE;
+            } else if (val === 4) {
+              display = TOWN_BLACK;
+            }
+
+            td.textContent = display;
+
+            if (
+              selectedPiece &&
+              selectedPiece.x === i &&
+              selectedPiece.y === j
+            ) {
+              td.classList.add("selected");
+            }
+
+            td.addEventListener(
+              "click",
+              (function (x, y) {
+                return () => handleCellClick(x, y);
+              })(i, j),
+            );
+            tr.appendChild(td);
+          }
+          table.appendChild(tr);
+        }
 
         const footer = document.createElement("tr");
         footer.appendChild(document.createElement("td"));
 
-        letters.forEach((letter) => {
+        for (let j = 0; j < BOARD_SIZE; j++) {
           const td = document.createElement("td");
-          td.textContent = letter;
+          td.textContent = COL_LETTERS[j];
           td.style.fontWeight = "bold";
+          td.style.backgroundColor = "#f0f0f0";
           footer.appendChild(td);
-        });
-
-        boardEl.appendChild(footer);
-      }
-
-      function placeSoldaten(x, y) {
-        socket.emit("place_soldaten", x, y, room);
+        }
+        table.appendChild(footer);
+        boardDiv.appendChild(table);
       }
 
       function handleCellClick(x, y) {
-        if (gameState === 1) {
-          handleMoveSelection(x, y);
-          console.log("Game state updated to MOVE_SOLDATEN:", gameState);
-        } else if (gameState === 0) {
-          placeSoldaten(x, y);
+        if (!field) return;
+
+        if (gameState === 0) {
+          socket.emit("place_soldaten", x, y, room);
+        } else if (gameState === 1) {
+          if (selectedPiece === null) {
+            const cell = field[x][y];
+            const isMySoldier =
+              (player === 1 && cell === 1) || (player === 2 && cell === 2);
+
+            if (isMySoldier) {
+              selectedPiece = { x, y };
+              infoEl.innerText = `Selected soldier at ${COL_LETTERS[y]}${x}`;
+              drawField();
+            } else {
+              infoEl.innerText = "Select your own soldier!";
+            }
+          } else {
+            socket.emit(
+              "move_soldaten",
+              selectedPiece.x,
+              selectedPiece.y,
+              x,
+              y,
+              player,
+              room,
+            );
+            selectedPiece = null;
+            drawField();
+          }
         }
-      }
-
-      function handleMoveSelection(x, y) {
-        console.log("gamestate in handelmoveselection" + gameState);
-
-        const cellValue = field[x][y];
-        console.log(field[x][y]);
-
-        if (selectedPiece === null) {
-          selectedPiece = { x, y };
-          console.log(selectedPiece);
-          infoEl.innerHTML = `Stein bei ${letters[y]}${x} ausgewählt.`;
-        }
-
-        socket.emit(
-          "move_soldaten",
-          selectedPiece.x,
-          selectedPiece.y,
-          x,
-          y,
-          player,
-          room,
-        );
-
-        selectedPiece = null;
       }
 
       socket.on("joined_room", (data) => {
-        console.log(data);
-
-        field = data.room.field;
-        player = data.room.players[data.player];
-
-        document.getElementById("playerColor").innerHTML =
-          "You are player: " + (player === 1 ? "White" : "Black");
+        field = data.board;
+        player = data.player;
+        playerColorEl.innerText =
+          "You are: " + (player === 1 ? "White 👇🏻" : "Black 👆🏿");
         drawField();
-      });
-
-      socket.on("info", (data) => {
-        if (data.gameState === 1) {
-          gameState = 1;
-          console.log("gamestate" + gameState);
-        }
-
-        infoEl.innerHTML = data.message;
       });
 
       socket.on("update_field", (newField) => {
         field = newField;
         drawField();
       });
+
+      socket.on("info", (data) => {
+        if (data.gameState !== undefined) {
+          gameState = data.gameState;
+        }
+        infoEl.innerText = "";
+        if (data.message) {
+          infoEl.innerText = data.message;
+        }
+      });
+
+      socket.on("error", (err) => console.error(err));
     </script>
   </body>
 </html>

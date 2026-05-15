@@ -3,11 +3,26 @@ from collections import Counter
 from dataclasses import dataclass, field
 from enum import IntEnum
 from itertools import batched, chain, compress, filterfalse, starmap
-from pprint import pprint
 from threading import Lock
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+from flask import Flask, render_template, request
+from flask_socketio import SocketIO, emit, join_room
+
+app = Flask(__name__)
+
+app.config["SECRET_KEY"] = "secret!"
+
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    sync_move="threading",
+    logger=True,
+    # engineio_logger=True,
+    ping_timeout=10000,
+    ping_interval=10000,
+)
 
 EMPTY = 0
 WHITE = 1  # 👇🏻
@@ -33,7 +48,7 @@ class GameState(IntEnum):
 
 @dataclass
 class Room:
-    name: str = field(default="test")
+    name: str = field(default_factory=str, init=True)
     board: Field = field(
         default_factory=lambda: np.zeros(
             (BOARD_SIZE, BOARD_SIZE), dtype=np.uint8
@@ -53,25 +68,28 @@ class Room:
 
     def join_room(self, sid: str) -> Optional[Spieler]:
         if self.room_is_full():
-            print("room is allready full")
+            emit("info", {"message": "Room is already full"}, to=sid)
             return None
 
         if not self.players:
             color = random.choice(list(Spieler))
             self.players |= {sid: color}
+            emit("joined_room", {"board": self.board, "player": color.value}, to=sid)
+            emit("info", {"message": f"Soldaten left {MAX_SOLDIERS}"}, to=sid)
             return color
 
         left = set(Spieler) - set(self.players.values())
         color = left.pop()
         self.players |= {sid: color}
+        emit("joined_room", {"board": self.board, "player": color.value}, to=sid)
+        emit("info", {"message": f"Soldaten left {MAX_SOLDIERS}"}, to=sid)
         return color
 
     def _validate_coordinate(self, x: int, y: int) -> bool:
         return (0 <= x < BOARD_SIZE) and (0 <= y < BOARD_SIZE)
 
-    def place_object(self, x: int, y: int, sid: str) -> Optional[Field]:
-        spieler = self._get_player(sid)
-        return self._check_placement(x, y, spieler)
+    def place_object(self, x: int, y: int, sid: str) -> None:
+        self._check_placement(x, y, sid)
 
     def _place_soldier(self, x: int, y: int, spieler: Spieler) -> Field:
         self.board[x][y] = WHITE if spieler == Spieler.WHITE else BLACK
@@ -103,24 +121,28 @@ class Room:
     def room_is_full(self) -> bool:
         return len(self.players) >= MAX_PLAYERS_IN_ROOM
 
-    def _check_placement(self, x: int, y: int, spieler: Spieler) -> Optional[Field]:
-        if not self.room_is_full():
-            print("warte auf den anderen gegner")
-            return None
+    def _check_coord_is_empty(self, x: int, y: int) -> bool:
+        return self.board[x][y] == EMPTY
 
-        if not self._validate_coordinate(x, y):
-            print(f"error koordinate {x, y} ist ausserhalb")
+    def _check_placement(self, x: int, y: int, sid: str) -> None:
+        if not self.room_is_full():
+            emit("info", {"message": "warte auf den anderen gegner"}, to=sid)
             return None
 
         if self._all_objects_placed():
-            print("alle objecte sind geplaced")
+            emit("info", {"message": "Now move soldaten"}, to=sid)
             return None
 
+        if not self._check_coord_is_empty(x, y):
+            emit("info", {"message": f"Koordinate {x, y} ist nicht leer"}, to=sid)
+            return None
+
+        spieler: Spieler = self._get_player(sid)
         soldiers, town = self._count_objects(spieler)
-        is_white = spieler == Spieler.WHITE
+        is_white: bool = spieler == Spieler.WHITE
 
         if spieler == Spieler.BLACK and not self._white_placed_all():
-            print("white muss zuerst alle objekte placen")
+            emit("info", {"message": "white muss zuerst alle objekte placen"}, to=sid)
             return None
 
         allowed_placement_soldier = (
@@ -135,17 +157,43 @@ class Room:
             else (x == BOARD_SIZE - 1) and (y in range(1, BOARD_SIZE - 1))
         )
 
+        opponent_sid = next(s for s in set(self.players.keys()) if s != sid)
+
         if soldiers < MAX_SOLDIERS:
             if not allowed_placement_soldier:
-                print(f"spieler {spieler} darfst hier nicht soldaten placen {x, y}")
+                emit("info", {"message": f"Soldier cant place here {x, y}"}, to=sid)
                 return None
-            return self._place_soldier(x, y, spieler)
 
-        if soldiers == MAX_SOLDIERS and town == 0:
-            if not allowed_placement_town:
-                print(f"spieler {spieler} darfst hier nicht town placen {x, y}")
+            self._place_soldier(x, y, spieler)
+            remaining = MAX_SOLDIERS - (soldiers + 1)
+
+            emit("info", {"message": f"{remaining} Soldiers left"}, to=sid)
+            emit(
+                "info",
+                {"message": f"{remaining} Soldiers left for {spieler.name}"},
+                to=opponent_sid,
+            )
+            emit("update_field", self.board, to=sid, broadcast=True)
+
+            if soldiers == MAX_SOLDIERS - 1:
+                emit("info", {"message": "Now place Town"}, to=sid)
                 return None
-            return self._place_town(x, y, spieler)
+            return None
+        else:
+            if (town == 0) and (not allowed_placement_town):
+                emit("info", {"message": f"Cant place Town here {x, y}"}, to=sid)
+                return None
+            elif town == 0 and spieler == Spieler.WHITE:
+                self._place_town(x, y, spieler)
+                emit("update_field", self.board, to=sid, broadcast=True)
+                emit("info", {"message": "Wait for black"}, to=sid)
+                emit("info", {"message": "Now place soldiers"}, to=opponent_sid)
+                return None
+            elif town == 0 and spieler == Spieler.BLACK:
+                self._place_town(x, y, spieler)
+                emit("update_field", self.board, to=sid, broadcast=True)
+                emit("info", {"message": "WHITE begins, move soldiers"}, broadcast=True)
+                return None
 
     def move_soldier(
         self, startX: int, startY: int, endX: int, endY: int, sid: str
@@ -583,14 +631,55 @@ class Room:
 rooms: Dict[str, Room] = {}
 
 
-if __name__ == "__main__":
-    r = Room()
-    r.join_room("a")
-    r.join_room("b")
-    rooms[r.name] = r
+@app.route("/")
+def hello_world():
+    return render_template("view.html", data=np.zeros((11, 11), dtype=np.uint8))
 
-    white_sid: str = next((k for k, v in r.players.items() if v == Spieler.WHITE))
-    black_sid: str = next((k for k, v in r.players.items() if v == Spieler.BLACK))
+
+@socketio.on("join_room")
+def join(name: str):
+    sid: str = request.sid  # Session ID
+
+    if name not in rooms:
+        rooms[name] = Room(name)
+
+    room = rooms[name]
+    room.join_room(sid)
+    join_room(room=name)
+
+
+@socketio.on("place_soldaten")
+def handle_place_soldaten(x: int, y: int, room: str):
+    sid: str = request.sid
+    r: Room = rooms[room]
+
+    if not r:
+        emit("info", f"No room with this name {room}", to=sid)
+
+    r.place_object(x, y, sid)
+    emit("update_field", r.board, broadcast=True)
+
+
+# @socketio.on("move_soldaten")
+# def handle_move_soldaten(
+#     startX: int, startY: int, zielX: int, zielY: int, spieler: Spieler, room: str
+# ):
+#     field: Field = move_soldat(
+#         start=(startX, startY), ziel=(zielX, zielY), spieler=spieler, room=room
+#     )
+#     emit("update_field", field, to=request.sid, broadcast=True)
+
+
+if __name__ == "__main__":
+    socketio.run(app, host="127.0.0.1", port=8000, debug=True)
+
+    # r = Room()
+    # r.join_room("a")
+    # r.join_room("b")
+    # rooms[r.name] = r
+
+    # white_sid: str = next((k for k, v in r.players.items() if v == Spieler.WHITE))
+    # black_sid: str = next((k for k, v in r.players.items() if v == Spieler.BLACK))
 
     # w = {"sid": white_sid}
     # b = {"sid": black_sid}
@@ -919,22 +1008,29 @@ if __name__ == "__main__":
     # move_cannon = r.move_cannon(7, 5, 4, 2, Spieler.BLACK)  # diagonal left up
     # move_cannon = r.move_cannon(5, 3, 8, 6, Spieler.BLACK)  # diagonal right down
 
-    r._place_soldier(3, 3, Spieler.WHITE)
-    r._place_soldier(4, 3, Spieler.WHITE)
-    r._place_soldier(5, 3, Spieler.WHITE)
+    # r._place_soldier(3, 3, Spieler.WHITE)
+    # r._place_soldier(4, 3, Spieler.WHITE)
+    # r._place_soldier(5, 3, Spieler.WHITE)
 
-    r._place_soldier(4, 2, Spieler.WHITE)
-    r._place_soldier(4, 1, Spieler.WHITE)
-    r._place_soldier(5, 1, Spieler.WHITE)
+    # r._place_soldier(4, 2, Spieler.WHITE)
+    # r._place_soldier(4, 1, Spieler.WHITE)
+    # r._place_soldier(5, 1, Spieler.WHITE)
 
-    pprint(r.board)
+    # pprint(r.board)
 
     # move_cannon = r.move_cannon(3, 3, 6, 3, Spieler.WHITE)  # horizontal down
     # move_cannon = r.move_cannon(5, 3, 2, 3, Spieler.WHITE)  # horizontal up
     # move_cannon = r.move_cannon(4, 1, 4, 4, Spieler.WHITE)  # vertical right
     # move_cannon = r.move_cannon(4, 3, 4, 0, Spieler.WHITE)  # vertical left
     # move_cannon = r.move_cannon(3, 3, 6, 0, Spieler.WHITE)  # diagonal left up
-    move_cannon = r.move_cannon(5, 1, 2, 4, Spieler.WHITE)  # diagonal right down
-    pprint(move_cannon)
+    # move_cannon = r.move_cannon(5, 1, 2, 4, Spieler.WHITE)  # diagonal right down
+    # pprint(move_cannon)
 
-    rooms.pop(r.name)
+    # rooms.pop(r.name)
+
+
+# @socketio.on("disconnect")
+# def handle_disconnect():
+#     sid: str = request.sid
+#     emit("info", {"message": "Disconnect"}, to=sid)
+#     print("Client disconnected")
