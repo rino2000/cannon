@@ -46,6 +46,7 @@
       let player = null;
       let gameState = 0;
       let selectedPiece = null;
+      let turn = null;
 
       const boardDiv = document.getElementById("board");
       const infoEl = document.getElementById("info");
@@ -135,11 +136,13 @@
 
         if (gameState === 0) {
           socket.emit("place_soldaten", x, y, room);
+          console.log(turn);
         } else if (gameState === 1) {
           if (selectedPiece === null) {
             const cell = field[x][y];
             const isMySoldier =
               (player === 1 && cell === 1) || (player === 2 && cell === 2);
+            console.log(turn);
 
             if (isMySoldier) {
               selectedPiece = { x, y };
@@ -149,13 +152,13 @@
               infoEl.innerText = "Select your own soldier!";
             }
           } else {
+            console.log(turn);
             socket.emit(
-              "move_soldaten",
+              "move_object",
               selectedPiece.x,
               selectedPiece.y,
               x,
               y,
-              player,
               room,
             );
             selectedPiece = null;
@@ -181,7 +184,14 @@
         if (data.gameState !== undefined) {
           gameState = data.gameState;
         }
+
+        if (data.turn !== null || data.turn !== undefined) {
+          turn = data.turn;
+          console.log(turn);
+        }
+
         infoEl.innerText = "";
+
         if (data.message) {
           infoEl.innerText = data.message;
         }
