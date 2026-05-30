@@ -29,7 +29,9 @@
     <label>Room: <input type="text" id="roomInput" /></label>
     <button id="joinBtn">Join Room</button>
     <p id="info"></p>
+    <p id="turn"></p>
     <p id="playerColor"></p>
+    <p id="captureCounter"></p>
     <div id="board"></div>
 
     <script>
@@ -46,11 +48,15 @@
       let player = null;
       let gameState = 0;
       let selectedPiece = null;
-      let turn = null;
+      let captureCounter = 0;
+      let turn = 1;
 
       const boardDiv = document.getElementById("board");
       const infoEl = document.getElementById("info");
       const playerColorEl = document.getElementById("playerColor");
+      const captureCounterEl = document.getElementById("captureCounter");
+      const turnEl = document.getElementById("turn");
+      const joinBtn = document.getElementById("joinBtn");
 
       infoEl.innerText = "Enter a room name and click Join.";
 
@@ -136,23 +142,17 @@
 
         if (gameState === 0) {
           socket.emit("place_soldaten", x, y, room);
-          console.log(turn);
         } else if (gameState === 1) {
           if (selectedPiece === null) {
             const cell = field[x][y];
             const isMySoldier =
               (player === 1 && cell === 1) || (player === 2 && cell === 2);
-            console.log(turn);
 
             if (isMySoldier) {
               selectedPiece = { x, y };
-              infoEl.innerText = `Selected soldier at ${COL_LETTERS[y]}${x}`;
               drawField();
-            } else {
-              infoEl.innerText = "Select your own soldier!";
             }
           } else {
-            console.log(turn);
             socket.emit(
               "move_object",
               selectedPiece.x,
@@ -168,10 +168,34 @@
       }
 
       socket.on("joined_room", (data) => {
-        field = data.board;
-        player = data.player;
-        playerColorEl.innerText =
-          "You are: " + (player === 1 ? "White 👇🏻" : "Black 👆🏿");
+        joinBtn.removeAttribute("disabled");
+
+        infoEl.innerText = "";
+
+        if (data.board) {
+          field = data.board;
+        }
+
+        if (data.player) {
+          player = data.player;
+          playerColorEl.innerText =
+            "You are: " + (data.player === 1 ? "White 👇🏻" : "Black 👆🏿");
+        }
+
+        if (data.capture) {
+          captureCounter = data.capture;
+          captureCounterEl.innerText = `Capture: ${data.capture}`;
+        }
+
+        if (data.turn) {
+          turn = data.turn;
+          turnEl.innerText = "Turn: " + (data.turn === 1 ? "White" : "Black");
+        }
+
+        if (data.message) {
+          infoEl.innerText = data.message;
+        }
+
         drawField();
       });
 
@@ -181,16 +205,21 @@
       });
 
       socket.on("info", (data) => {
-        if (data.gameState !== undefined) {
+        console.log(data);
+
+        if (data.gameState) {
           gameState = data.gameState;
         }
 
-        if (data.turn !== null || data.turn !== undefined) {
-          turn = data.turn;
-          console.log(turn);
+        if (data.capture) {
+          captureCounter = data.capture;
+          captureCounterEl.innerText = `Capture: ${captureCounter}`;
         }
 
-        infoEl.innerText = "";
+        if (data.turn) {
+          turn = data.turn;
+          turnEl.innerText = "Turn: " + (data.turn === 1 ? "White" : "Black");
+        }
 
         if (data.message) {
           infoEl.innerText = data.message;
