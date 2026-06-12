@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from flask import Flask, render_template, request
-from flask_socketio import SocketIO, emit, join_room
+from flask_socketio import SocketIO, emit
 
 app = Flask(__name__)
 
@@ -248,7 +248,9 @@ class Room:
             emit("info", {"message": "Nicht dein Turn"}, to=sid)
             return None
 
-        if self.board[startX][startY] in [TOWN_BLACK, TOWN_WHITE]:
+        if (self.board[startX][startY] == TOWN_BLACK) or (
+            self.board[startX][startY] == TOWN_WHITE
+        ):
             emit("info", {"message": "Du darfst die Stadt nicht bewegen"}, to=sid)
             return None
 
@@ -302,6 +304,9 @@ class Room:
                 to=sid,
             )
             return None
+
+        if self._is_cannon(startX, startY, spieler):
+            return self.move_cannon(startX, startY, endX, endY, sid)
 
         self._swap(startX, startY, endX, endY, sid)
         emit("info", {"turn": self._turn.value}, broadcast=True)
@@ -637,7 +642,7 @@ class Room:
             coords.append(((bottom), (bottom[0], bottom[1] - 3)))
 
         validate = set(filter(lambda c: self._validate_coordinate(*c[1]), coords))
-        cannons = list(map(lambda x: self._check_is_cannon(*x[1], spieler), validate))
+        cannons = list(map(lambda x: self._is_cannon(*x[1], spieler), validate))
 
         return list(compress(validate, cannons))
 
@@ -649,7 +654,7 @@ class Room:
         self.board[endX][endY] = soldier
         return self.switch_turn(spieler)
 
-    def _check_is_cannon(self, x: int, y: int, spieler: Spieler) -> bool:
+    def _is_cannon(self, x: int, y: int, spieler: Spieler) -> bool:
         cannons = self._get_all_cannons(x, y, spieler)
         return any(map(lambda x: len(x) == 3, cannons))
 
@@ -657,6 +662,10 @@ class Room:
 
         spieler: Spieler = self._get_player(sid)
         cannons = self._get_all_cannons(startX, startY, spieler)
+
+        # if endX, endY != gun axis then move soldier
+        if (startX, startY) != self._get_cannon_gun_axis(cannons, spieler):
+            return self._swap(startX, startY, endX, endY, sid)
 
         if not cannons or ((startX, startY) not in chain(*cannons)):
             emit("info", {"message": f"{startX, startY} gibt keine cannons"}, to=sid)
@@ -695,7 +704,7 @@ def join(name: str):
 
     room = rooms[name]
     room.join_room(sid)
-    join_room(room=name)
+    # join_room(room=name)
 
 
 @socketio.on("place_soldaten")
@@ -724,365 +733,3 @@ def handle_move_object(startX: int, startY: int, zielX: int, zielY: int, room: s
 
 if __name__ == "__main__":
     socketio.run(app, host="127.0.0.1", port=8000, debug=True)
-
-    # r = Room()
-    # r.join_room("a")
-    # r.join_room("b")
-    # rooms[r.name] = r
-
-    # white_sid: str = next((k for k, v in r.players.items() if v == Spieler.WHITE))
-    # black_sid: str = next((k for k, v in r.players.items() if v == Spieler.BLACK))
-
-    # w = {"sid": white_sid}
-    # b = {"sid": black_sid}
-
-    # for y in range(1, BOARD_SIZE, 2):
-    #     for x in range(1, 4):
-    #         r.place_object(**w | {"x": x, "y": y})
-
-    # r.place_object(**w | {"x": 0, "y": 4})
-
-    # for yy in range(0, BOARD_SIZE, 2):
-    #     for xx in range(6, 9):
-    #         r.place_object(**b | {"x": xx, "y": yy})
-
-    # r.place_object(**b | {"x": 9, "y": 7})
-
-    # print(r._count_objects(Spieler.WHITE), r._count_objects(Spieler.BLACK))
-    # pprint(r.board)
-    # print()
-
-    # allowed white
-    # r.move_soldier(1, 1, 2, 2, white_sid)  # diagonal rechts
-    # r.move_soldier(1, 1, 2, 0, white_sid)  # diagonal links
-    # r.move_soldier(3, 1, 4, 1, white_sid)  # gerade aus
-
-    # error moves
-    # r.move_soldier(3, 1, 5, 1, white_sid)  # mehr als 1+ gerade aus
-    # r.move_soldier(1, 1, 1, 0, white_sid)  # links
-    # r.move_soldier(1, 1, 1, 2, white_sid)  # rechts
-    # r.move_soldier(0, 4, 0, 5, white_sid)  # versucht stadt moven
-    # r.move_soldier(1, 1, 0, 1, white_sid)  # 1 hinten
-
-    # allowed black
-    # r.move_soldier(6, 0, 5, 1, black_sid)  # diagonal rechts
-    # r.move_soldier(6, 2, 5, 1, black_sid)  # diagonal links
-    # r.move_soldier(6, 0, 5, 0, black_sid)  # gerade aus
-
-    # error moves
-    # r.move_soldier(6, 0, 4, 0, black_sid)  # mehr als 1+ gerade aus
-    # r.move_soldier(6, 2, 6, 1, black_sid)  # links
-    # r.move_soldier(6, 0, 6, 1, black_sid)  # rechts
-    # r.move_soldier(9, 7, 9, 10, black_sid)  # versucht stadt moven
-    # r.move_soldier(8, 0, 9, 0, black_sid)  # 1 hinten
-
-    # capture
-    # black_coord = {"x": 4, "y": 1, "spieler": Spieler.BLACK}
-    # r._place_soldier(**black_coord)  # place black
-
-    # r._place_soldier(3, 0, Spieler.WHITE)  # diagonally left
-    # r._place_soldier(3, 2, Spieler.WHITE)  # diagonally right
-    # r._place_soldier(4, 2, Spieler.WHITE)  # right
-    # r._place_soldier(4, 0, Spieler.WHITE)  # left
-
-    # pprint(r.board)
-
-    # print(r._check_capture_soldier(**black_coord))
-
-    # pprint(r.move_soldier(4, 1, 3, 1, black_sid))
-
-    # print(r.black_captured, r.white_captured)
-
-    # interception logic
-    # print(r._check_threat(5, 1, Spieler.BLACK))  # false thread
-    # print(r._check_threat(4, 1, Spieler.BLACK))  # true thread
-
-    # thread logic
-    # r._place_soldier(4, 5, Spieler.WHITE)
-    # r._place_soldier(5, 5, Spieler.BLACK)
-    # r._place_soldier(7, 5, Spieler.WHITE)
-    # print(r._check_interception_thread_move(5, 5, Spieler.BLACK))
-
-    # pprint(r.board)
-    # print()
-    # print(r._check_interception_thread_move(5, 5, Spieler.BLACK))
-    # print(r._all_possible_thread_moves(5, 5, Spieler.BLACK))
-    # r.gameState = GameState.MOVE_SOLDATEN
-    # pprint(r.move_soldier(5, 5, 7, 7, black_sid)) #thread move right diagonally
-    # pprint(r.move_soldier(5, 5, 7, 3, black_sid))  # thread move left diagonally
-    # pprint(r.move_soldier(5, 5, 7, 5, black_sid))  # thread move down
-
-    # [r._place_soldier(x, 0, Spieler.BLACK) for x in range(7, 9)]
-    # r._place_soldier(5, 5, Spieler.BLACK)
-    # r._place_soldier(6, 5, Spieler.BLACK)
-    # r._place_soldier(6, 5, Spieler.BLACK)
-    # r._place_soldier(7, 4, Spieler.BLACK)
-
-    # r.board = np.arange(100).reshape(10, 10).tolist()
-    # r._place_soldier(5, 5, Spieler.BLACK)
-    # r._place_soldier(5, 5, Spieler.BLACK)
-    # r._place_soldier(4, 5, Spieler.BLACK)
-    # r._place_soldier(3, 5, Spieler.BLACK)
-    # r._place_soldier(5, 5, Spieler.BLACK)
-    # r._place_soldier(4, 4, Spieler.WHITE)
-
-    # c = r._check_create_cannon(5, 5, Spieler.BLACK)
-
-    # print(c)
-
-    # r._place_soldier(5, 5, Spieler.BLACK) if c else None
-    # l = r._get_all_cannons(5, 5, Spieler.BLACK)
-
-    # print(r._get_cannon_gun_axis(l, Spieler.WHITE))
-
-    # r._place_soldier(2, 5, Spieler.WHITE)
-    # r._place_soldier(2, 8, Spieler.WHITE)
-    # r._place_soldier(1, 1, Spieler.WHITE)
-    # print(r._check_cannon_shoot_interception(5, 5, Spieler.BLACK))
-    # print(r._check_cannon_shoot(5, 5, 1, 1, Spieler.BLACK))
-
-    # r._place_soldier(1, 5, Spieler.WHITE)
-    # r._place_soldier(0, 5, Spieler.WHITE)
-    # r._place_soldier(1, 1, Spieler.WHITE)
-    # r._place_soldier(1, 9, Spieler.WHITE)
-
-    # pprint(r.board)
-    # print()
-    # pprint(r._cannon_shoot(5, 5, 1, 1, Spieler.BLACK))
-    # print(r.black_captured, r.white_captured)
-
-    # r.gameState = GameState.MOVE_SOLDATEN
-    # pprint(r.place_object(2, 2, white_sid))
-    # print()
-    # pprint(r.move_soldier(2, 2, 2, 3, white_sid))
-
-    # move shoot
-    # r._place_soldier(6, 0, Spieler.BLACK)
-    # r._place_soldier(7, 0, Spieler.BLACK)
-    # r._place_soldier(8, 0, Spieler.BLACK)
-    # r._place_soldier(4, 0, Spieler.WHITE)
-    # pprint(r.board)
-
-    # cannons = r._get_all_cannons(6, 0, Spieler.BLACK)
-    # cannon_axis = r._get_cannon_gun_axis(cannons, Spieler.BLACK)
-    # print(cannon_axis)
-    # print(
-    #     r._check_cannon_shoot_interception(
-    #         cannon_axis[0], cannon_axis[1], Spieler.BLACK
-    #     )
-    # )
-    # pprint(r._cannon_shoot(cannon_axis[0], cannon_axis[1], 4, 0, Spieler.BLACK))
-
-    # cannon move
-    # r._place_soldier(6, 0, Spieler.BLACK)
-    # r._place_soldier(7, 0, Spieler.BLACK)
-    # r._place_soldier(8, 0, Spieler.BLACK)
-    # r._place_soldier(5, 0, Spieler.WHITE)
-
-    # [
-    #     r.place_object(x, y, white_sid)
-    #     for y in range(0, 11)
-    #     if y % 2 != 0
-    #     for x in range(1, 4)
-    # ]
-    # r.place_object(0, 4, white_sid)  # town white
-    # [
-    #     r.place_object(x, y, black_sid)
-    #     for y in range(0, 10)
-    #     if y % 2 == 0
-    #     for x in range(6, 9)
-    # ]
-    # r.place_object(9, 7, black_sid)  # town black
-
-    # pprint(r.board)
-
-    # pprint(r.move_soldier(6, 0, 5, 0, black_sid))  # move soldier forward black
-    # pprint(r.move_soldier(6, 2, 5, 1, black_sid))  # move soldier diagonally left black
-    # pprint(r.move_soldier(6, 4, 5, 5, black_sid))  # move soldier diagonally right black
-    # pprint(r.move_soldier(5, 5, 6, 5, black_sid))  # move soldier back black
-    # print()
-    # r._place_soldier(1, 1, Spieler.WHITE)
-    # r.move_soldier(1, 1, 2, 1, white_sid)  # move soldier forward white
-    # r.move_soldier(2, 1, 3, 2, white_sid)  # move soldier left diagonally white
-    # r.move_soldier(3, 2, 4, 1, white_sid)  # move soldier right diagonally white
-
-    # pprint(r.move_soldier(0, 4, 0, 5, white_sid))  # move town white
-    # pprint(r.move_soldier(9, 7, 9, 6, black_sid))  # move town black
-
-    # pprint(r.move_soldier(3, 1, 4, 1, white_sid))  # move soldier white
-
-    # r.gameState = GameState.MOVE_SOLDATEN
-    # r._place_soldier(1, 1, Spieler.WHITE) # move backwards thread for black
-    # r._place_soldier(2, 1, Spieler.BLACK)
-    # r._place_soldier(3, 2, Spieler.WHITE)
-    # [
-    #     r._place_soldier(*x, Spieler.BLACK)
-    #     for x in chain.from_iterable(r._check_interception_thread_move(2, 1, Spieler.BLACK))
-    # ]
-
-    # r.gameState = GameState.MOVE_SOLDATEN
-    # r._place_soldier(5, 5, Spieler.BLACK)  # move backwards thread for white
-    # r._place_soldier(4, 5, Spieler.WHITE)
-    # r._place_soldier(2, 3, Spieler.BLACK)
-    # [
-    #     r._place_soldier(*x, Spieler.WHITE)
-    #     for x in chain.from_iterable(r._check_interception_thread_move(4, 5, Spieler.WHITE))
-    # ]
-
-    # r.gameState = GameState.MOVE_SOLDATEN
-    # r._place_soldier(5, 5, Spieler.BLACK)  # check capture soldier white
-    # r._place_soldier(4, 5, Spieler.WHITE)
-
-    # pprint(r.move_soldier(5, 5, 4, 5, black_sid))
-    # print(r.white_captured, r.black_captured)
-
-    # pprint(r.board)
-
-    # r.gameState = GameState.MOVE_SOLDATEN
-    # r._place_soldier(5, 5, Spieler.BLACK)  # check capture soldier black
-    # r._place_soldier(4, 5, Spieler.WHITE)
-
-    # pprint(r.move_soldier(4, 5, 5, 5, white_sid))
-    # print(r.white_captured, r.black_captured)
-
-    # r.gameState = GameState.MOVE_SOLDATEN
-    # r._place_soldier(5, 5, Spieler.BLACK)  # check thread move soldier black 2 back
-    # pprint(r.move_soldier(5, 5, 7, 5, black_sid))
-    # r._place_soldier(
-    #     5, 5, Spieler.BLACK
-    # )  # check thread move soldier black 2 back diagonally left
-    # pprint(r.move_soldier(5, 5, 7, 3, black_sid))
-    # r._place_soldier(
-    #     5, 5, Spieler.BLACK
-    # )  # check thread move soldier black 2 back diagonally right
-    # pprint(r.move_soldier(5, 5, 7, 7, black_sid))
-    # r._place_soldier(4, 5, Spieler.WHITE)
-    # pprint(r.board)
-
-    # r.gameState = GameState.MOVE_SOLDATEN
-    # r._place_soldier(4, 5, Spieler.WHITE)
-    # r._place_soldier(5, 5, Spieler.BLACK)
-    # pprint(r.move_soldier(4, 5, 2, 5, white_sid)) check thread move soldier white 2 back
-    # pprint(r.move_soldier(4, 5, 2, 3, white_sid)) check thread move soldier white 2 right diagonally
-    # pprint(r.move_soldier(4, 5, 2, 7, white_sid)) check thread move soldier white 2 left diagonally
-
-    # pprint(r.board)
-    # print()
-
-    # """Test create cannon"""
-    # r._place_soldier(4, 5, Spieler.BLACK)
-    # r._place_soldier(5, 5, Spieler.BLACK)
-    # print(r._can_create_cannon(6, 5, Spieler.BLACK))
-
-    """Test cannon shoot"""
-    # r._place_soldier(2, 3, Spieler.WHITE)
-    # r._place_soldier(3, 3, Spieler.WHITE)
-    # r._place_soldier(3, 7, Spieler.WHITE)
-    # r._place_soldier(2, 8, Spieler.WHITE)
-
-    # r._place_soldier(5, 3, Spieler.BLACK)
-    # r._place_soldier(6, 3, Spieler.BLACK)
-    # r._place_soldier(7, 3, Spieler.BLACK)
-    # r._place_soldier(6, 4, Spieler.BLACK)
-    # r._place_soldier(5, 5, Spieler.BLACK)
-    # r._place_soldier(6, 5, Spieler.BLACK)
-
-    # r._place_soldier(1, 3, Spieler.WHITE)
-    # r._place_soldier(2, 3, Spieler.WHITE)
-    # r._place_soldier(3, 3, Spieler.WHITE)
-
-    # r._place_soldier(2, 4, Spieler.WHITE)
-    # r._place_soldier(2, 5, Spieler.WHITE)
-    # r._place_soldier(3, 5, Spieler.WHITE)
-
-    # r._place_soldier(5, 3, Spieler.BLACK)
-    # r._place_soldier(6, 3, Spieler.BLACK)
-
-    # r._place_soldier(5, 7, Spieler.BLACK)
-    # r._place_soldier(6, 8, Spieler.BLACK)
-
-    # all_cannons = r._get_all_cannons(1, 3, Spieler.WHITE)
-    # print(all_cannons)
-    # cannon_axis = r._get_cannon_gun_axis(all_cannons, Spieler.WHITE)
-    # print(cannon_axis)
-
-    # pprint(r.board)
-    # pprint(r._cannon_shoot(*cannon_axis, 5, 3, Spieler.WHITE))
-    # pprint(r._cannon_shoot(*cannon_axis, 6, 3, Spieler.WHITE))
-
-    # pprint(r._cannon_shoot(*cannon_axis, 5, 7, Spieler.WHITE))
-    # pprint(r._cannon_shoot(*cannon_axis, 6, 8, Spieler.WHITE))
-
-    # """Horizontal gerade schwarz"""
-    # r._place_soldier(5, 4, Spieler.BLACK)
-    # r._place_soldier(6, 4, Spieler.BLACK)
-    # r._place_soldier(7, 4, Spieler.BLACK)
-
-    # """Diagonal rechts schwarz"""
-    # r._place_soldier(6, 5, Spieler.BLACK)
-    # r._place_soldier(7, 4, Spieler.BLACK)
-    # r._place_soldier(5, 6, Spieler.BLACK)
-
-    # """Diagonal links schwarz"""
-    # r._place_soldier(6, 3, Spieler.BLACK)
-    # r._place_soldier(7, 4, Spieler.BLACK)
-    # r._place_soldier(5, 2, Spieler.BLACK)
-
-    # """Horzontal gerade weiss"""
-    # r._place_soldier(6, 4, Spieler.WHITE)
-    # r._place_soldier(5, 4, Spieler.WHITE)
-    # r._place_soldier(4, 4, Spieler.WHITE)
-
-    # """Diagonal rechts weiss"""
-    # r._place_soldier(5, 3, Spieler.WHITE)
-    # r._place_soldier(4, 4, Spieler.WHITE)
-    # r._place_soldier(6, 2, Spieler.WHITE)
-
-    # """Diagonal links weiss"""
-    # r._place_soldier(3, 3, Spieler.WHITE)
-    # r._place_soldier(4, 4, Spieler.WHITE)
-    # r._place_soldier(2, 2, Spieler.WHITE)
-
-    # r._place_soldier(5, 5, Spieler.BLACK)
-    # r._place_soldier(6, 5, Spieler.BLACK)
-    # r._place_soldier(7, 5, Spieler.BLACK)
-
-    # r._place_soldier(6, 4, Spieler.BLACK)
-    # r._place_soldier(5, 3, Spieler.BLACK)
-    # r._place_soldier(6, 3, Spieler.BLACK)
-
-    # pprint(r.board)
-
-    # move_cannon = r.move_cannon(5, 5, 8, 5, Spieler.BLACK) #horizontal down
-    # move_cannon = r.move_cannon(7, 5, 4, 5, Spieler.BLACK) #horizontal up
-    # move_cannon = r.move_cannon(6, 3, 6, 6, Spieler.BLACK)  # vertical right
-    # move_cannon = r.move_cannon(6, 5, 6, 2, Spieler.BLACK)  # vertical left
-    # move_cannon = r.move_cannon(7, 5, 4, 2, Spieler.BLACK)  # diagonal left up
-    # move_cannon = r.move_cannon(5, 3, 8, 6, Spieler.BLACK)  # diagonal right down
-
-    # r._place_soldier(3, 3, Spieler.WHITE)
-    # r._place_soldier(4, 3, Spieler.WHITE)
-    # r._place_soldier(5, 3, Spieler.WHITE)
-
-    # r._place_soldier(4, 2, Spieler.WHITE)
-    # r._place_soldier(4, 1, Spieler.WHITE)
-    # r._place_soldier(5, 1, Spieler.WHITE)
-
-    # pprint(r.board)
-
-    # move_cannon = r.move_cannon(3, 3, 6, 3, Spieler.WHITE)  # horizontal down
-    # move_cannon = r.move_cannon(5, 3, 2, 3, Spieler.WHITE)  # horizontal up
-    # move_cannon = r.move_cannon(4, 1, 4, 4, Spieler.WHITE)  # vertical right
-    # move_cannon = r.move_cannon(4, 3, 4, 0, Spieler.WHITE)  # vertical left
-    # move_cannon = r.move_cannon(3, 3, 6, 0, Spieler.WHITE)  # diagonal left up
-    # move_cannon = r.move_cannon(5, 1, 2, 4, Spieler.WHITE)  # diagonal right down
-    # pprint(move_cannon)
-
-    # rooms.pop(r.name)
-
-
-# @socketio.on("disconnect")
-# def handle_disconnect():
-#     sid: str = request.sid
-#     emit("info", {"message": "Disconnect"}, to=sid)
-#     print("Client disconnected")

@@ -171,6 +171,7 @@
         joinBtn.removeAttribute("disabled");
 
         infoEl.innerText = "";
+        captureCounterEl.innerText = `Capture: ${data.capture}`;
 
         if (data.board) {
           field = data.board;
