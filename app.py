@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from itertools import batched, chain, compress, filterfalse, starmap
 from threading import Lock
-from typing import Dict, List, Optional, Tuple
+from typing import Final, Self
 
 import numpy as np
 from flask import Flask, render_template, request
@@ -24,26 +24,43 @@ socketio = SocketIO(
     ping_interval=10000,
 )
 
-EMPTY = 0
-WHITE = 1  # 👇🏻
-BLACK = 2  # 👆🏿
-TOWN_WHITE = 3  # 🏠
-TOWN_BLACK = 4  # 🏡
-MAX_SOLDIERS = 15
-MAX_PLAYERS_IN_ROOM = 2
-BOARD_SIZE = 10  # 10x10
+EMPTY: Final = 0
+MAX_SOLDIERS: Final = 15
+MAX_PLAYERS_IN_ROOM: Final = 2
+BOARD_SIZE: Final = 10  # 10x10
 
-Field = List[List[int]]
+type Field = list[list[int]]
+type Coord = tuple[int, int]
+
+
+class Town(IntEnum):
+    WHITE = 3  # 🏠
+    BLACK = 4  # 🏡
+
+
+class Soldier(IntEnum):
+    WHITE = 1  # 👇🏻
+    BLACK = 2  # 👆🏿
 
 
 class Spieler(IntEnum):
     WHITE = 1
     BLACK = 2
 
+    @property
+    def direction(self) -> int:
+        return 1 if self == Spieler.WHITE else -1
+
+    @property
+    def opponent(self) -> Self:
+        return Spieler.WHITE if self == Spieler.BLACK else Spieler.BLACK
+
 
 class GameState(IntEnum):
     PLACE_SOLDATEN = 0
     MOVE_SOLDATEN = 1
+    GAME_OVER = 2
+    SURRENDER = 3
 
 
 @dataclass
@@ -55,9 +72,7 @@ class Room:
         ).tolist(),
         init=False,
     )
-    players: Dict[str, Spieler] = field(
-        default_factory=lambda: {}, init=False
-    )  # {sid:color}
+    players: dict[str, Spieler] = field(default_factory=dict, init=False)  # {sid:color}
     gameState: GameState = field(default=GameState.PLACE_SOLDATEN, init=False)
     white_captured: int = field(default=0, init=False)
     black_captured: int = field(default=0, init=False)
@@ -69,8 +84,7 @@ class Room:
 
     def join_room(self, sid: str) -> None:
         if self.room_is_full():
-            emit("info", {"message": "Room is already full"}, to=sid)
-            return None
+            return emit("info", {"message": "Room is already full"}, to=sid)
 
         if not self.players:
             color = random.choice(list(Spieler))
@@ -78,7 +92,7 @@ class Room:
             capture: int = (
                 self.black_captured if color == Spieler.BLACK else self.white_captured
             )
-            emit(
+            return emit(
                 "joined_room",
                 {
                     "board": self.board,
@@ -89,7 +103,6 @@ class Room:
                 },
                 to=sid,
             )
-            return None
 
         left = set(Spieler) - set(self.players.values())
         color = left.pop()
@@ -97,7 +110,7 @@ class Room:
         capture: int = (
             self.black_captured if color == Spieler.BLACK else self.white_captured
         )
-        emit(
+        return emit(
             "joined_room",
             {
                 "board": self.board,
@@ -108,43 +121,40 @@ class Room:
             },
             to=sid,
         )
-        return None
 
     def _validate_coordinate(self, x: int, y: int) -> bool:
         return (0 <= x < BOARD_SIZE) and (0 <= y < BOARD_SIZE)
 
     def place_object(self, x: int, y: int, sid: str) -> None:
-        self._check_placement(x, y, sid)
+        return self._check_placement(x, y, sid)
 
-    def _place_soldier(self, x: int, y: int, spieler: Spieler) -> Field:
-        self.board[x][y] = WHITE if spieler == Spieler.WHITE else BLACK
-        return self.board
+    def _place_soldier(self, x: int, y: int, spieler: Spieler) -> None:
+        self.board[x][y] = Soldier.WHITE if spieler == Spieler.WHITE else Soldier.BLACK
 
-    def _place_town(self, x: int, y: int, spieler: Spieler) -> Field:
-        town = TOWN_WHITE if spieler == Spieler.WHITE else TOWN_BLACK
+    def _place_town(self, x: int, y: int, spieler: Spieler) -> None:
+        town = Town.WHITE if spieler == Spieler.WHITE else Town.BLACK
         self.board[x][y] = town
         if self._all_objects_placed():
             self.gameState = GameState.MOVE_SOLDATEN
-        return self.board
 
-    def _count_objects(self, spieler: Spieler) -> Tuple[int, int]:
-        color = WHITE if spieler == Spieler.WHITE else BLACK
+    def _count_objects(self, spieler: Spieler) -> tuple[int, int]:
+        color = Soldier.WHITE if spieler == Spieler.WHITE else Soldier.BLACK
         c = Counter(chain(*self.board))
-        soldiers = c[WHITE if color == WHITE else BLACK]
-        town = c[TOWN_WHITE if color == WHITE else TOWN_BLACK]
+        soldiers = c[Soldier.WHITE if color == Soldier.WHITE else Soldier.BLACK]
+        town = c[Town.WHITE if color == Soldier.WHITE else Town.BLACK]
         return (soldiers, town)
 
     def _all_objects_placed(self) -> bool:
-        return all(self._count_objects(s) == (MAX_SOLDIERS, 1) for s in list(Spieler))
+        return all(self._count_objects(s) == (MAX_SOLDIERS, 1) for s in set(Spieler))
 
     def _white_placed_all(self) -> bool:
         return self._count_objects(Spieler.WHITE) == (MAX_SOLDIERS, 1)
 
-    def _get_player(self, sid: str) -> Optional[Spieler]:
+    def _get_player(self, sid: str) -> Spieler | None:
         if player := self.players.get(sid):
             return player
         else:
-            emit("info", {"message": f"{sid} not in players"}, to=sid)
+            return emit("info", {"message": f"{sid} not in players"}, to=sid)
 
     def room_is_full(self) -> bool:
         return len(self.players) >= MAX_PLAYERS_IN_ROOM
@@ -154,24 +164,20 @@ class Room:
 
     def _check_placement(self, x: int, y: int, sid: str) -> None:
         if not self.room_is_full():
-            emit("info", {"message": "warte auf den anderen gegner"}, to=sid)
-            return None
+            return emit("info", {"message": "warte auf den anderen gegner"}, to=sid)
 
         if self._all_objects_placed():
-            emit("info", {"message": "Now move soldaten"}, to=sid)
-            return None
+            return emit("info", {"message": "Now move soldaten"}, to=sid)
 
         if not self._coord_is_empty(x, y):
-            emit("info", {"message": f"Koordinate {x, y} ist nicht leer"}, to=sid)
-            return None
+            return emit("info", {"message": f"koord {x, y} ist nicht leer"}, to=sid)
 
         spieler: Spieler = self._get_player(sid)
         soldiers, town = self._count_objects(spieler)
         is_white: bool = spieler == Spieler.WHITE
 
         if spieler == Spieler.BLACK and not self._white_placed_all():
-            emit("info", {"message": "white muss zuerst alle objekte placen"}, to=sid)
-            return None
+            return emit("info", {"message": "white muss zuerst alles placen"}, to=sid)
 
         allowed_placement_soldier = (
             (x in range(1, 4)) and (y in range(1, BOARD_SIZE))
@@ -189,8 +195,7 @@ class Room:
 
         if soldiers < MAX_SOLDIERS:
             if not allowed_placement_soldier:
-                emit("info", {"message": f"Soldier cant place here {x, y}"}, to=sid)
-                return None
+                return emit("info", {"message": f"cant place Soldier {x, y}"}, to=sid)
 
             self._place_soldier(x, y, spieler)
             remaining = MAX_SOLDIERS - (soldiers + 1)
@@ -204,21 +209,17 @@ class Room:
             emit("update_field", self.board, to=sid, broadcast=True)
 
             if soldiers == MAX_SOLDIERS - 1:
-                emit("info", {"message": "Now place Town"}, to=sid)
-                return None
-            return None
+                return emit("info", {"message": "Now place Town"}, to=sid)
         else:
             if (town == 0) and (not allowed_placement_town):
-                emit("info", {"message": f"Cant place Town here {x, y}"}, to=sid)
-                return None
+                return emit("info", {"message": f"Cant place Town here {x, y}"}, to=sid)
             elif town == 0 and spieler == Spieler.WHITE:
                 self._place_town(x, y, spieler)
                 emit("update_field", self.board, to=sid, broadcast=True)
                 emit("info", {"message": "Wait for black"}, to=sid)
                 emit("info", {"message": "Now place soldiers"}, to=opponent_sid)
                 self.switch_turn(spieler)
-                emit("info", {"turn": self._turn.value}, broadcast=True)
-                return None
+                return emit("info", {"turn": self._turn.value}, broadcast=True)
             elif town == 0 and spieler == Spieler.BLACK:
                 self._place_town(x, y, spieler)
                 emit("update_field", self.board, to=sid, broadcast=True)
@@ -227,62 +228,55 @@ class Room:
                 self.switch_turn(spieler)
                 emit("info", {"turn": self._turn.value}, broadcast=True)
                 emit("info", {"message": "Wait for White"}, to=sid)
-                emit("info", {"message": "Now Move Soldiers"}, to=opponent_sid)
-                return None
+                return emit("info", {"message": "Now Move Soldiers"}, to=opponent_sid)
 
     def switch_turn(self, spieler: Spieler) -> None:
-        opponent: Spieler = next(s for s in set(Spieler) if s != spieler)
-        self._turn = opponent
+        with self._lock:
+            self._turn = spieler.opponent
 
     def move_object(
         self, startX: int, startY: int, endX: int, endY: int, sid: str
     ) -> None:
 
         if self.gameState != GameState.MOVE_SOLDATEN:
-            emit("info", {"message": "Nicht in move soldaten gamestate"}, to=sid)
-            return None
-
-        spieler: Spieler = self._get_player(sid)
-
-        if self._turn != spieler:
-            emit("info", {"message": "Nicht dein Turn"}, to=sid)
-            return None
-
-        if (self.board[startX][startY] == TOWN_BLACK) or (
-            self.board[startX][startY] == TOWN_WHITE
-        ):
-            emit("info", {"message": "Du darfst die Stadt nicht bewegen"}, to=sid)
-            return None
-
-        soldier = WHITE if spieler == Spieler.WHITE else BLACK
-
-        if self.board[startX][startY] != soldier:
-            emit("info", {"message": f"Nicht dein soldat {soldier}"}, to=sid)
-            return None
+            return emit("info", {"message": "Nicht in move soldaten gamestate"}, to=sid)
 
         if not (
             self._validate_coordinate(startX, startY)
             and self._validate_coordinate(endX, endY)
         ):
-            emit(
+            return emit(
                 "info",
                 {"message": f"Nicht valide {startX, startY} {endX, endY}"},
                 to=sid,
             )
-            return None
 
-        if self._check_threat(startX, startY, spieler):
-            if (endX, endY) in self._check_interception_thread_move(
-                startX, startY, spieler
-            ):
-                emit("info", {"message": f"thread move {endX, endY} moved"}, to=sid)
-                self._swap(startX, startY, endX, endY, sid)
+        spieler: Spieler = self._get_player(sid)
+
+        if self._turn != spieler:
+            return emit("info", {"message": "Nicht dein Turn"}, to=sid)
+
+        if self.board[startX][startY] in set(Town):
+            return emit(
+                "info", {"message": "Du darfst die Stadt nicht bewegen"}, to=sid
+            )
+
+        soldier = Soldier.WHITE if spieler == Spieler.WHITE else Soldier.BLACK
+
+        if self.board[startX][startY] != soldier:
+            return emit("info", {"message": "Nicht dein soldat"}, to=sid)
+
+        if self._check_threat(startX, startY, spieler) and (
+            endX,
+            endY,
+        ) in self._check_interception_thread_move(startX, startY, spieler):
+            emit("info", {"message": f"thread move {endX, endY} moved"}, to=sid)
+            return self._swap(startX, startY, endX, endY, sid)
 
         if (endX, endY) in self._check_capture_soldier(startX, startY, spieler):
             capture: int = self.capture_soldier(startX, startY, endX, endY, sid)
             emit("info", {"capture": capture}, to=sid)
-            emit("info", {"turn": self._turn.value}, broadcast=True)
-            return None
+            return emit("info", {"turn": self._turn.name}, broadcast=True)
 
         if (
             spieler == Spieler.WHITE
@@ -290,34 +284,37 @@ class Room:
             or spieler == Spieler.BLACK
             and (startX - endX) == -1
         ):
-            emit(
-                "info",
-                {"message": f"soldat: {soldier} darf nicht 1 schritt nachhinten"},
-                to=sid,
+            return emit(
+                "info", {"message": "du darf nicht 1 schritt nachhinten"}, to=sid
             )
-            return None
+
+        if self._is_cannon(startX, startY, spieler) and self._is_cannon_axis(
+            startX, startY, sid
+        ):
+            if self._cannon_shoot_intercepted(startX, startY, spieler):
+                return emit("info", {"message": "cannon shoot intercepted"}, to=sid)
+
+            if (endX, endY) in self._check_cannon_shoot_validate(
+                startX, startY, spieler
+            ):
+                return self.cannon_shoot(endX, endY, sid)
+            else:
+                return self.move_cannon(startX, startY, endX, endY, sid)
 
         if abs(endY - startY) > 1 or abs(endX - startX) > 1:
-            emit(
-                "info",
-                {"message": "soldat darf nur 1 schritt in allen richtungen"},
-                to=sid,
-            )
-            return None
-
-        if self._is_cannon(startX, startY, spieler):
-            return self.move_cannon(startX, startY, endX, endY, sid)
+            return emit("info", {"message": "soldat darf nur 1 schritt machen"}, to=sid)
 
         self._swap(startX, startY, endX, endY, sid)
-        emit("info", {"turn": self._turn.value}, broadcast=True)
+        return emit("info", {"turn": self._turn.name}, broadcast=True)
 
-    def _check_capture_soldier(
-        self, x: int, y: int, spieler: Spieler
-    ) -> List[Tuple[int, int]]:
-        """Return list of all possible coordinates where opponent is in to capture"""
+    def _is_cannon_axis(self, startX: int, startY: int, sid: str) -> bool:
+        spieler: Spieler = self._get_player(sid)
+        all_cannons = self._get_all_cannons(startX, startY, spieler)
+        axis = self._get_cannon_gun_axis(all_cannons, spieler)
+        return (startX, startY) == axis
 
-        opponent = WHITE if spieler == Spieler.BLACK else BLACK
-        direction = 1 if spieler == Spieler.WHITE else -1
+    def _check_capture_soldier(self, x: int, y: int, spieler: Spieler) -> list[Coord]:
+        direction: int = spieler.direction
 
         coords = [
             (x, y - 1),  # left
@@ -326,9 +323,8 @@ class Room:
             (x + direction, y - 1),  # diagonally left
             (x + direction, y + 1),  # diagonally right
         ]
-
-        validate = filter(lambda c: self._validate_coordinate(*c), coords)
-        return list(filter(lambda x: self.board[x[0]][x[1]] == opponent, validate))
+        val = filter(lambda c: self._validate_coordinate(*c), coords)
+        return filterfalse(lambda x: self.board[x[0]][x[1]] != spieler.opponent, val)
 
     def _capture_soldier(self, spieler: Spieler) -> int:
         with self._lock:
@@ -343,34 +339,27 @@ class Room:
         self, startX: int, startY: int, endX: int, endY: int, sid: str
     ) -> int:
         player: Spieler = self._get_player(sid)
-        # opponent_soldir = WHITE if player == Spieler.BLACK else BLACK
-
-        # if self.board[endX][endY] == opponent_soldir:
-        # capture: int = self._capture_soldier(player)
         self._swap(startX, startY, endX, endY, sid)
         return self._capture_soldier(player)
 
     def _check_threat(self, x: int, y: int, spieler: Spieler) -> bool:
-        direction = 1 if spieler == Spieler.WHITE else -1
-        opponent = WHITE if spieler == Spieler.BLACK else BLACK
-
+        direction: int = spieler.direction
         coords = [
             (x, y - 1),  # left
             (x, y + 1),  # right
             (x + 1 * direction, y),  # above
-            (x + 1 * direction, y - 1),  # diagonally right
-            (x + 1 * direction, y + 1),  # diagonally left
+            (x + 1 * direction, y - 1),  # diagonally left
+            (x + 1 * direction, y + 1),  # diagonally right
         ]
-        valide_coords = filter(lambda c: self._validate_coordinate(*c), coords)
-        check_thread = map(lambda x: self.board[x[0]][x[1]] == opponent, valide_coords)
-        return any(check_thread)
+        validate = filter(lambda c: self._validate_coordinate(*c), coords)
+        return any(self.board[x[0]][x[1]] == spieler.opponent for x in validate)
 
     def _check_interception_thread_move(
         self, x: int, y: int, spieler: Spieler
-    ) -> List[Tuple[int, int]]:
+    ) -> list[Coord]:
         """Return list of all possible thread moves"""
 
-        direction = 1 if spieler == Spieler.WHITE else -1
+        direction: int = spieler.direction
 
         coords = [
             (
@@ -394,7 +383,7 @@ class Room:
 
         f = filterfalse(lambda x: len(x) < 2, valide_coords)
 
-        interceptions = [WHITE, BLACK, TOWN_BLACK, TOWN_WHITE]
+        interceptions = list(Soldier) + list(Town)
         all_possible_coords = list(compress(valide_coords, f))
 
         # check for interception
@@ -415,10 +404,10 @@ class Room:
 
     def _check_cannon_coordinates(
         self, endX: int, endY: int, spieler: Spieler
-    ) -> List[Tuple[Tuple[int, int], Tuple[int, int]]]:
+    ) -> list[tuple[Coord, Coord]]:
         """Return all possibles cannon coordinates from a selected cannon coordinate"""
 
-        direction = 1 if spieler == Spieler.WHITE else -1
+        direction: int = spieler.direction
         coords = []
 
         vertical = [
@@ -464,13 +453,11 @@ class Room:
             )
         )
 
-    def _get_all_cannons(
-        self, x: int, y: int, spieler: Spieler
-    ) -> List[Tuple[Tuple[int, int]]]:
-        direction = 1 if spieler == Spieler.WHITE else -1
-        soldier = WHITE if spieler == Spieler.WHITE else BLACK
+    def _get_all_cannons(self, x: int, y: int, spieler: Spieler):
+        direction: int = spieler.direction
+        soldier = Soldier.WHITE if spieler == Spieler.WHITE else Soldier.BLACK
 
-        all_possible_coords: List[Tuple[Tuple[int, int], Tuple[int, int]]] = []
+        all_possible_coords: list[tuple[Coord, Coord]] = []
 
         vertical = [
             # 2 druber
@@ -532,8 +519,8 @@ class Room:
         return valide
 
     def _get_cannon_gun_axis(
-        self, coords: List[Tuple[Tuple[int, int], Tuple[int, int]]], spieler: Spieler
-    ) -> Tuple[int, int]:
+        self, coords: list[tuple[Coord, Coord]], spieler: Spieler
+    ) -> Coord:
         coords = list(chain(*coords))
         return (
             min(coords, key=lambda x: x[0])
@@ -541,30 +528,22 @@ class Room:
             else max(coords, key=lambda x: x[0])
         )
 
-    def _get_cannon_axis(self, coords: List[Tuple[Tuple[int, int], Tuple[int, int]]]):
-        return list(map(lambda x: (min(x), max(x)), coords))
+    def _get_cannon_axis(self, coords: list[tuple[Coord, Coord]]):
+        return [(min(x), max(x)) for x in coords]
 
-    def _check_cannon_shoot_interception(
-        self, x: int, y: int, spieler: Spieler
-    ) -> bool:
-
-        direction = 1 if spieler == Spieler.WHITE else -1
-        opponent = BLACK if spieler == Spieler.WHITE else WHITE
-
-        interceptions = [
+    def _cannon_shoot_intercepted(self, x: int, y: int, spieler: Spieler) -> bool:
+        direction: int = spieler.direction
+        coords = [
             (x + 3 * direction, y),  # gerade
             (x + 3 * direction, y + 3),  # diagonal rechts
             (x + 3 * direction, y - 3),  # diagonal links
         ]
-
-        check = filter(lambda c: self._validate_coordinate(*c), interceptions)
-        interceptions = map(lambda c: self.board[c[0]][c[1]] == opponent, check)
-        return any(interceptions)
+        valide = filter(lambda c: self._validate_coordinate(*c), coords)
+        return any(self.board[c[0]][c[1]] in list(Soldier) for c in valide)
 
     def _check_cannon_shoot_validate(self, startX: int, startY: int, spieler: Spieler):
-
-        direction = 1 if spieler == Spieler.WHITE else -1
-        possible_targets = [
+        direction: int = spieler.direction
+        coords = [
             (startX + 4 * direction, startY),
             (startX + 5 * direction, startY),
             (startX + 4 * direction, startY + 4),
@@ -572,50 +551,31 @@ class Room:
             (startX + 4 * direction, startY - 4),
             (startX + 5 * direction, startY - 5),
         ]
+        return filterfalse(lambda c: self._validate_coordinate(*c) == False, coords)
 
-        return list(filter(lambda c: self._validate_coordinate(*c), possible_targets))
+    def cannon_shoot(self, endX: int, endY: int, sid: str):
+        player: Spieler = self._get_player(sid)
+        soldier: Soldier = Soldier.WHITE if player == Spieler.WHITE else Soldier.BLACK
 
-    def _cannon_shoot(self, startX: int, startY: int, endX: int, endY: int, spieler):
+        if self.board[endX][endY] in (list(Town) + [EMPTY, soldier]):
+            return emit("info", {"message": "target is invalide"}, to=sid)
 
-        coords = self._check_cannon_shoot_validate(startX, startY, spieler)
-        soldier = WHITE if spieler == Spieler.WHITE else BLACK
-
-        if self._check_cannon_shoot_interception(endX, endY, spieler):
-            print("cannon shoot fail, because of interception")
-            return None
-
-        x, y = self._get_cannon_gun_axis(
-            self._get_all_cannons(startX, startY, spieler), spieler
-        )
-
-        if not self.board[x][y] == soldier and not (startX == x and startY == y):
-            print(f"cannon shoot axis != {startX, startY}")
-            return None
-
-        if (endX, endY) not in coords:
-            print("cannon target shooting coord is not in coords")
-            return None
-
-        if self.board[endX][endY] in [soldier, TOWN_BLACK, TOWN_WHITE]:
-            print("cannon target shoot is not opponent")
-            return None
-
-        self._capture_soldier(spieler)
-        self.board[endX][endY] = EMPTY
-        print(f"cannon shoot capture {endX, endY} ")
-
-        return self.board
+        self._capture_soldier(player)
+        self.switch_turn(player)
+        with self._lock:
+            self.board[endX][endY] = EMPTY
+        return emit("info", {"message": f"cannon shoot capture {endX, endY}"}, to=sid)
 
     def _check_all_possbible_cannon_moves(
-        self, cannons: List[Tuple[Tuple[int, int]]], spieler: Spieler
+        self, cannons: list[tuple[Coord]], spieler: Spieler
     ):
         """Return list of all coord pairs after calculate axis swap that are cannons"""
 
         axis = self._get_cannon_axis(cannons)
-        direction = 1 if spieler == Spieler.WHITE else -1
+        direction: int = spieler.direction
 
         # (axis coord ,possible coord)
-        coords: List[Tuple[Tuple[int, int]], Tuple[int, int]] = []
+        coords: list[tuple[Coord], tuple[Coord]] = []
 
         for x in axis:
             top, bottom = x
@@ -642,93 +602,91 @@ class Room:
             coords.append(((bottom), (bottom[0], bottom[1] - 3)))
 
         validate = set(filter(lambda c: self._validate_coordinate(*c[1]), coords))
-        cannons = list(map(lambda x: self._is_cannon(*x[1], spieler), validate))
+        cannons = (self._is_cannon(*x[1], spieler) for x in validate)
 
         return list(compress(validate, cannons))
 
     def _swap(self, startX: int, startY: int, endX: int, endY: int, sid: str) -> None:
         spieler: Spieler = self._get_player(sid)
-        soldier = WHITE if spieler == Spieler.WHITE else BLACK
+        soldier: Soldier = Soldier.WHITE if spieler == Spieler.WHITE else Soldier.BLACK
 
-        self.board[startX][startY] = EMPTY
-        self.board[endX][endY] = soldier
+        with self._lock:
+            self.board[startX][startY] = EMPTY
+            self.board[endX][endY] = soldier
         return self.switch_turn(spieler)
 
     def _is_cannon(self, x: int, y: int, spieler: Spieler) -> bool:
         cannons = self._get_all_cannons(x, y, spieler)
-        return any(map(lambda x: len(x) == 3, cannons))
+        return any(len(x) == 3 for x in cannons)
 
     def move_cannon(self, startX: int, startY: int, endX: int, endY: int, sid: str):
-
         spieler: Spieler = self._get_player(sid)
         cannons = self._get_all_cannons(startX, startY, spieler)
 
         # if endX, endY != gun axis then move soldier
-        if (startX, startY) != self._get_cannon_gun_axis(cannons, spieler):
-            return self._swap(startX, startY, endX, endY, sid)
+        # if (startX, startY) != self._get_cannon_gun_axis(cannons, spieler):
+        #     return self._swap(startX, startY, endX, endY, sid)
 
-        if not cannons or ((startX, startY) not in chain(*cannons)):
-            emit("info", {"message": f"{startX, startY} gibt keine cannons"}, to=sid)
-            return None
+        # if not cannons or ((startX, startY) not in chain(*cannons)):
+        #     return emit(
+        #         "info", {"message": f"{startX, startY} gibt keine cannons"}, to=sid
+        #     )
 
         possible_moves = self._check_all_possbible_cannon_moves(cannons, spieler)
 
         coord = ((startX, startY), (endX, endY))
-        moves = list(filter(lambda move: coord == move, possible_moves))
+        moves = filterfalse(lambda move: coord != move, possible_moves)
 
         target_coord = list(starmap(lambda _, target: target, moves))
 
         if not moves or (coord[1] not in target_coord):
-            emit("info", {"message": f"Move {coord} nicht moglich zu moven"}, to=sid)
-            return None
+            return emit(
+                "info", {"message": f"Move {coord} nicht moglich zu moven"}, to=sid
+            )
 
-        self._swap(startX, startY, endX, endY, sid)
+        return self._swap(startX, startY, endX, endY, sid)
 
 
-rooms: Dict[str, Room] = {}
+rooms: dict[str, Room] = {}
 
 
 @app.get("/")
 def hello_world():
-    return render_template(
-        "view.html", data=np.zeros((BOARD_SIZE, BOARD_SIZE), dtype=np.uint8)
-    )
+    board = np.zeros((BOARD_SIZE, BOARD_SIZE), dtype=np.uint8)
+    return render_template("view.html", data=board)
 
 
 @socketio.on("join_room")
-def join(name: str):
+def join(name: str) -> None:
     sid: str = request.sid  # Session ID
 
     if name not in rooms:
         rooms[name] = Room(name)
 
-    room = rooms[name]
-    room.join_room(sid)
+    return rooms[name].join_room(sid)
     # join_room(room=name)
 
 
 @socketio.on("place_soldaten")
-def handle_place_soldaten(x: int, y: int, room: str):
+def handle_place_soldaten(x: int, y: int, room: str) -> None:
     sid: str = request.sid
-    r: Room = rooms[room]
 
-    if not r:
-        emit("info", f"No room with this name {room}", to=sid)
+    if not (r := rooms.get(room)):
+        return emit("info", f"No room with this name {room}", to=sid)
 
     r.place_object(x, y, sid)
-    emit("update_field", r.board, broadcast=True)
+    return emit("update_field", r.board, broadcast=True)
 
 
 @socketio.on("move_object")
-def handle_move_object(startX: int, startY: int, zielX: int, zielY: int, room: str):
+def handle_move_object(startX: int, startY: int, endX: int, endY: int, room: str):
     sid: str = request.sid
-    r: Room = rooms[room]
 
-    if not r:
-        emit("info", f"No room with this name {room}", to=sid)
+    if not (r := rooms.get(room)):
+        return emit("info", f"No room with this name {room}", to=sid)
 
-    r.move_object(startX, startY, zielX, zielY, sid)
-    emit("update_field", r.board, to=room, broadcast=True)
+    r.move_object(startX, startY, endX, endY, sid)
+    return emit("update_field", r.board, to=room, broadcast=True)
 
 
 if __name__ == "__main__":
