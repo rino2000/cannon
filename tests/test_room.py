@@ -163,7 +163,7 @@ class TestRoom:
 
         recv = white_client.get_received()
 
-        assert recv[0]["args"][0]["message"] == "Du darfst die Stadt nicht bewegen"
+        assert recv[0]["args"][0]["message"] == "Städte nicht bewegen"
         assert room.board[startX][startY] == Town.WHITE
         assert room.board[endX][endY] == EMPTY
 
@@ -190,7 +190,7 @@ class TestRoom:
         black_client.emit("move_object", startX, startY, endX, endY, room.name)
         recv = black_client.get_received()
 
-        assert recv[0]["args"][0]["message"] == "Du darfst die Stadt nicht bewegen"
+        assert recv[0]["args"][0]["message"] == "Städte nicht bewegen"
         assert room.board[startX][startY] == Town.BLACK
         assert room.board[endX][endY] == EMPTY
 
@@ -781,3 +781,155 @@ class TestRoom:
         assert room.board[endX][endY] == EMPTY
         assert room.black_captured == 0
         assert room.white_captured == 0
+
+    def test_soldier_black_capture_town_white(self, two_clients: clients):
+        self.test_first_white_move(two_clients)
+        room: Room = rooms[self._room_name]
+        room.board = [
+            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
+            [0, 0, 0, 2, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
+        ]
+        _, _, black_client, _ = get_white_black_clients(two_clients, room)
+        black_client.get_received()  # clear all messages in list
+
+        startX, startY, endX, endY = 1, 3, 0, 4
+        black_client.emit("move_object", startX, startY, endX, endY, room.name)
+
+        recv = black_client.get_received()
+        pprint(recv)
+
+        assert recv[0]["args"][0]["message"] == "Game Over"
+        assert room.gameState == GameState.GAME_OVER
+        assert room.board[startX][startY] == EMPTY
+        assert room.black_captured == 0
+        assert room.white_captured == 0
+        assert room._turn == Spieler.BLACK
+
+    def test_soldier_white_capture_town_black(self, two_clients: clients):
+        self.test_first_move_black(two_clients)
+        room: Room = rooms[self._room_name]
+        room.board = [
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
+        ]
+        white_client, _, _, _ = get_white_black_clients(two_clients, room)
+        white_client.get_received()  # clear all messages in list
+
+        startX, startY, endX, endY = 8, 6, 9, 7
+        white_client.emit("move_object", startX, startY, endX, endY, room.name)
+
+        recv = white_client.get_received()
+
+        assert recv[0]["args"][0]["message"] == "Game Over"
+        assert room.gameState == GameState.GAME_OVER
+        assert room.board[startX][startY] == EMPTY
+        assert room.black_captured == 0
+        assert room.white_captured == 0
+        assert room._turn == Spieler.WHITE
+
+    def test_white_cannon_shoot_capture_town(self, two_clients: clients):
+        self.test_first_move_black(two_clients)
+        room: Room = rooms[self._room_name]
+        room.board = [
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
+        ]
+        white_client, _, _, _ = get_white_black_clients(two_clients, room)
+        white_client.get_received()  # clear all messages in list
+
+        startX, startY, endX, endY = 5, 7, 9, 7
+        white_client.emit("move_object", startX, startY, endX, endY, room.name)
+
+        recv = white_client.get_received()
+
+        assert recv[0]["args"][0]["message"] == "Game Over"
+        assert room.gameState == GameState.GAME_OVER
+        assert room.black_captured == 0
+        assert room.white_captured == 0
+        assert room._turn == Spieler.WHITE
+
+    def test_black_cannon_shoot_capture_town(self, two_clients: clients):
+        self.test_first_white_move(two_clients)
+        room: Room = rooms[self._room_name]
+        room.board = [
+            [0, 0, 0, 0, 0, 3, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
+        ]
+        _, _, black_client, _ = get_white_black_clients(two_clients, room)
+        black_client.get_received()  # clear all messages in list
+
+        startX, startY, endX, endY = 5, 5, 0, 5
+        black_client.emit("move_object", startX, startY, endX, endY, room.name)
+
+        recv = black_client.get_received()
+
+        assert recv[0]["args"][0]["message"] == "Game Over"
+        assert room.gameState == GameState.GAME_OVER
+        assert room.black_captured == 0
+        assert room.white_captured == 0
+        assert room._turn == Spieler.BLACK
+
+    def test_black_surrender(self, two_clients: clients):
+        self.test_first_white_move(two_clients)
+        room: Room = rooms[self._room_name]
+
+        _, _, black_client, _ = get_white_black_clients(two_clients, room)
+        black_client.get_received()  # clear all messages in list
+
+        spieler: Spieler = room._turn
+        black_client.emit("surrender", room._turn, room.name)
+
+        recv = black_client.get_received()
+
+        assert recv[0]["args"][0]["message"] == "Game Over"
+        assert recv[0]["args"][0]["winner"] == f"Winner {spieler.opponent.name}"
+        assert room.gameState == GameState.GAME_OVER
+        assert room._turn == Spieler.BLACK
+
+    def test_white_surrender(self, two_clients: clients):
+        self.test_first_move_black(two_clients)
+        room: Room = rooms[self._room_name]
+        white_client, _, _, _ = get_white_black_clients(two_clients, room)
+        white_client.get_received()  # clear all messages in list
+
+        spieler: Spieler = room._turn
+        white_client.emit("surrender", room._turn, room.name)
+
+        recv = white_client.get_received()
+
+        assert recv[0]["args"][0]["message"] == "Game Over"
+        assert recv[0]["args"][0]["winner"] == f"Winner {spieler.opponent.name}"
+        assert room.gameState == GameState.GAME_OVER
+        assert room._turn == Spieler.WHITE
