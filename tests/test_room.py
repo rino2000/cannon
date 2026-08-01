@@ -194,6 +194,36 @@ class TestRoom:
         assert room.board[startX][startY] == Town.BLACK
         assert room.board[endX][endY] == EMPTY
 
+    def test_black_move_coords_invalide(self, two_clients: clients) -> None:
+        self.test_first_white_move(two_clients)
+        room: Room = rooms[self._room_name]
+        _, _, black_client, _ = get_white_black_clients(two_clients, room)
+        black_client.get_received()  # clear all messages in list
+
+        startX, startY, endX, endY = 11, 23, 203, 20
+
+        black_client.emit("move_object", startX, startY, endX, endY, room.name)
+        recv = black_client.get_received()
+
+        assert (
+            recv[0]["args"][0]["message"] == f"Not valide {startX, startY} {endX, endY}"
+        )
+
+    def test_white_move_coords_invalide(self, two_clients: clients) -> None:
+        self.test_first_move_black(two_clients)
+        room: Room = rooms[self._room_name]
+        white_client, _, _, _ = get_white_black_clients(two_clients, room)
+        white_client.get_received()  # clear all messages in list
+
+        startX, startY, endX, endY = -23, 100, 13, -13
+
+        white_client.emit("move_object", startX, startY, endX, endY, room.name)
+        recv = white_client.get_received()
+
+        assert (
+            recv[0]["args"][0]["message"] == f"Not valide {startX, startY} {endX, endY}"
+        )
+
     def test_first_move_black(self, two_clients: clients) -> None:
         self.test_first_white_move(two_clients)
         room: Room = rooms[self._room_name]

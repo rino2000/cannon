@@ -1,5 +1,5 @@
 ```bash
-uv pip install flask flask-socketio numpy
+uv pip install -r pyproject.toml
 ```
 
 ```bash
