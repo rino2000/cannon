@@ -6,6 +6,7 @@ from itertools import batched, chain, compress, filterfalse, starmap
 from threading import Lock
 from typing import Final, Self
 
+import flask_socketio
 import numpy as np
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
@@ -106,16 +107,12 @@ class Room:
 
         self.players[sid] = color
 
-        captured: int = (
-            self.black_captured if color == Spieler.BLACK else self.white_captured
-        )
-
         return emit(
             "joined_room",
             {
                 "board": self.board,
                 "player": color.value,
-                "capture": captured,
+                "capture": 0,
                 "turn": self._turn.value,
                 "message": f"Soldaten left {MAX_SOLDIERS}",
             },
@@ -653,6 +650,11 @@ class Room:
         self.gameState = GameState.GAME_OVER
         return spieler.opponent
 
+    def disconnect(self, sid: str) -> None:
+        opponent_sid: str = next(s for s in set(self.players.keys()) if s != sid)
+        emit("info", {"message": "Opponent disconnected"}, to=opponent_sid)
+        return flask_socketio.disconnect()
+
 
 rooms: dict[str, Room] = {}
 
@@ -709,6 +711,16 @@ def handle_surrender(spieler: int, room: str):
         {"message": "Game Over", "winner": f"Winner {result.name}"},
         broadcast=True,
     )
+
+
+@socketio.on("disconnect")
+def handle_disconnect(room: str):
+    sid: str = request.sid
+
+    if not (r := rooms.get(room)):
+        return emit("info", f"No room with this name {room}", to=sid)
+
+    return r.disconnect(sid)
 
 
 if __name__ == "__main__":
