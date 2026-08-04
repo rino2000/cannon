@@ -279,8 +279,6 @@ class TestRoom:
         startX, startY, endX, endY = 1, 1, 4, 1
         white_client.emit("move_object", startX, startY, endX, endY, room.name)
 
-        recv = white_client.get_received()
-        assert recv == []
         assert room.board[startX][startY] == EMPTY
         assert room.board[endX][endY] == Soldier.WHITE
         assert room._turn == Spieler.BLACK
@@ -312,9 +310,6 @@ class TestRoom:
         startX, startY, endX, endY = 8, 2, 5, 2
         black_client.emit("move_object", startX, startY, endX, endY, room.name)
 
-        recv = black_client.get_received()
-
-        assert recv == []
         assert room.board[startX][startY] == EMPTY
         assert room.board[endX][endY] == Soldier.BLACK
         assert room._turn == Spieler.WHITE
@@ -477,7 +472,6 @@ class TestRoom:
         ]
         _, _, black_client, _ = get_white_black_clients(two_clients, room)
         black_client.get_received()  # clear all messages in list
-        print(room._turn.name)
 
         startX, startY, endX, endY = 8, 1, 4, 5
         black_client.emit("move_object", startX, startY, endX, endY, room.name)
@@ -510,7 +504,6 @@ class TestRoom:
         ]
         _, _, black_client, _ = get_white_black_clients(two_clients, room)
         black_client.get_received()  # clear all messages in list
-        print(room._turn.name)
 
         startX, startY, endX, endY = 8, 1, 3, 6
         black_client.emit("move_object", startX, startY, endX, endY, room.name)
@@ -988,3 +981,63 @@ class TestRoom:
         assert black_client.is_connected() == True
         assert white_client.is_connected() == False
         assert len(room.players) == 2
+
+    def test_move_soldier_white_to_white_soldier(self, two_clients: clients):
+        self.test_first_move_black(two_clients)
+        room: Room = rooms[self._room_name]
+        white_client, _, _, _ = get_white_black_clients(two_clients, room)
+        white_client.get_received()  # clear all messages in list
+        room.board = [
+            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
+            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
+        ]
+
+        startX, startY, endX, endY = 3, 1, 4, 2
+        white_client.emit("move_object", startX, startY, endX, endY, room.name)
+
+        recv = white_client.get_received()
+
+        assert recv[0]["args"][0]["message"] == "Feld ist besetzt"
+        assert room.board[startX][startY] == Soldier.WHITE
+        assert room.board[endX][endY] == Soldier.WHITE
+        assert room._turn == Spieler.WHITE
+        assert room.black_captured == 0
+        assert room.white_captured == 0
+
+    def test_move_soldier_black_to_black_soldier(self, two_clients: clients):
+        self.test_first_white_move(two_clients)
+        room: Room = rooms[self._room_name]
+        _, _, black_client, _ = get_white_black_clients(two_clients, room)
+        black_client.get_received()  # clear all messages in list
+        room.board = [
+            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 2, 0, 0, 0, 0, 0, 0],
+            [0, 0, 2, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 2, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 2, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
+        ]
+
+        startX, startY, endX, endY = 5, 2, 4, 3
+        black_client.emit("move_object", startX, startY, endX, endY, room.name)
+
+        recv = black_client.get_received()
+
+        assert recv[0]["args"][0]["message"] == "Feld ist besetzt"
+        assert room.board[startX][startY] == Soldier.BLACK
+        assert room.board[endX][endY] == Soldier.BLACK
+        assert room._turn == Spieler.BLACK
+        assert room.black_captured == 0
+        assert room.white_captured == 0

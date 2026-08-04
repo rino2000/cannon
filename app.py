@@ -258,6 +258,9 @@ class Room:
         if self.board[startX][startY] in set(Town):
             return emit("info", {"message": "Städte nicht bewegen"}, to=sid)
 
+        if self.board[endX][endY] == spieler.soldier:
+            return emit("info", {"message": "Feld ist besetzt"}, to=sid)
+
         if self.board[startX][startY] != spieler.soldier:
             return emit("info", {"message": "Nicht dein soldat"}, to=sid)
 
