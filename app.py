@@ -126,10 +126,10 @@ class Room:
         return self._check_placement(x, y, sid)
 
     def _place_soldier(self, x: int, y: int, spieler: Spieler) -> None:
-        self.board[x][y] = spieler.soldier
+        self.board[x][y] = spieler.soldier.value
 
     def _place_town(self, x: int, y: int, spieler: Spieler) -> None:
-        self.board[x][y] = spieler.town
+        self.board[x][y] = spieler.town.value
         if self._all_objects_placed():
             self.gameState = GameState.MOVE_SOLDATEN
 
@@ -274,7 +274,7 @@ class Room:
         if (endX, endY) in self._check_capture_soldier(startX, startY, spieler):
             capture: int = self.capture_soldier(startX, startY, endX, endY, sid)
             emit("info", {"capture": capture}, to=sid)
-            return emit("info", {"turn": self._turn.name}, broadcast=True)
+            return emit("info", {"turn": self._turn.value}, broadcast=True)
 
         if (
             spieler == Spieler.WHITE
@@ -303,7 +303,7 @@ class Room:
             return emit("info", {"message": "soldat darf nur 1 schritt machen"}, to=sid)
 
         self._swap(startX, startY, endX, endY, sid)
-        return emit("info", {"turn": self._turn.name}, broadcast=True)
+        return emit("info", {"turn": self._turn.value}, broadcast=True)
 
     def _is_cannon_axis(self, startX: int, startY: int, sid: str) -> bool:
         spieler: Spieler = self._get_player(sid)
@@ -464,7 +464,7 @@ class Room:
 
     def _get_all_cannons(self, x: int, y: int, spieler: Spieler):
         direction: int = spieler.direction
-        soldier: Soldier = spieler.soldier
+        soldier: Soldier = spieler.soldier.value
 
         all_possible_coords: list[tuple[Coord, Coord]] = []
 
@@ -621,7 +621,7 @@ class Room:
         spieler: Spieler = self._get_player(sid)
         with self._lock:
             self.board[startX][startY] = EMPTY
-            self.board[endX][endY] = spieler.soldier
+            self.board[endX][endY] = spieler.soldier.value
         return self.switch_turn(spieler)
 
     def _is_cannon(self, x: int, y: int, spieler: Spieler) -> bool:
@@ -695,7 +695,7 @@ def handle_move_object(startX: int, startY: int, endX: int, endY: int, room: str
         return emit("info", f"No room with this name {room}", to=sid)
 
     r.move_object(startX, startY, endX, endY, sid)
-    return emit("update_field", r.board, to=room, broadcast=True)
+    return emit("update_field", r.board, broadcast=True)
 
 
 @socketio.on("surrender")
