@@ -32,6 +32,7 @@
     <p id="turn"></p>
     <p id="playerColor"></p>
     <p id="captureCounter"></p>
+    <p id="winnerEl"></p>
     <div id="board"></div>
 
     <script>
@@ -57,22 +58,19 @@
       const captureCounterEl = document.getElementById("captureCounter");
       const turnEl = document.getElementById("turn");
       const joinBtn = document.getElementById("joinBtn");
+      const winnerEl = document.getElementById("winnerEl");
 
       infoEl.innerText = "Enter a room name and click Join.";
 
       document.getElementById("joinBtn").onclick = () => {
         const name = document.getElementById("roomInput").value.trim();
-        if (!name) {
-          return alert("Enter room name");
-        }
+        if (!name) return alert("Enter room name");
         room = name;
         socket.emit("join_room", name);
       };
 
       function drawField() {
-        if (!field) {
-          return;
-        }
+        if (!field) return;
 
         boardDiv.innerHTML = "";
         const table = document.createElement("table");
@@ -138,7 +136,7 @@
       }
 
       function handleCellClick(x, y) {
-        if (!field) return;
+        if (!field || gameState === 3) return;
 
         if (gameState === 0) {
           socket.emit("place_soldaten", x, y, room);
@@ -218,6 +216,11 @@
         if (data.turn) {
           turn = data.turn;
           turnEl.innerText = "Turn: " + (data.turn === 1 ? "White" : "Black");
+        }
+
+        if (data.winner) {
+          winner = data.winner;
+          winnerEl.innerText = data.winner;
         }
 
         if (data.message) {

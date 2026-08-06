@@ -57,7 +57,7 @@ class Spieler(IntEnum):
         return Spieler.WHITE if self == Spieler.BLACK else Spieler.BLACK
 
     @property
-    def opponent_town(self) -> Self:
+    def opponent_town(self) -> Town:
         return Town.WHITE if self == Spieler.BLACK else Town.BLACK
 
     @property
@@ -230,14 +230,26 @@ class Room:
             self._turn = spieler.opponent
 
     def capture_town(self, startX: int, startY: int, sid: str):
+        player: Spieler = self._get_player(sid)
         with self._lock:
             self.board[startX][startY] = EMPTY
             self.gameState = GameState.GAME_OVER
-        return emit("info", {"message": "Game Over"}, to=sid)
+        return emit(
+            "info",
+            {
+                "message": "Game Over",
+                "gameState": self.gameState,
+                "winner": f"Winner: {player.name}",
+            },
+            to=sid,
+            broadcast=True,
+        )
 
     def move_object(
         self, startX: int, startY: int, endX: int, endY: int, sid: str
     ) -> None:
+        if self.gameState == GameState.GAME_OVER:
+            return emit("info", {"message": "Game Over"}, to=sid)
 
         if self.gameState != GameState.MOVE_SOLDATEN:
             return emit("info", {"message": "Nicht in move soldaten gamestate"}, to=sid)
@@ -676,7 +688,6 @@ def join(name: str) -> None:
         rooms[name] = Room(name)
 
     return rooms[name].join_room(sid)
-    # join_room(room=name)
 
 
 @socketio.on("place_soldaten")
