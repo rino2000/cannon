@@ -4,22 +4,22 @@ from flask_socketio import SocketIOTestClient
 from app import (
     EMPTY,
     GameState,
+    Player,
     Room,
     Soldier,
-    Spieler,
     Town,
     app,
     rooms,
     socketio,
 )
 
-type sid = str
-type clients = tuple[tuple[SocketIOTestClient, sid], tuple[SocketIOTestClient, sid]]
-type WhiteBlackClients = tuple[SocketIOTestClient, sid, SocketIOTestClient, sid]
+type Sid = str
+type Clients = tuple[tuple[SocketIOTestClient, Sid], tuple[SocketIOTestClient, Sid]]
+type WhiteBlackClients = tuple[SocketIOTestClient, Sid, SocketIOTestClient, Sid]
 
 
 @pytest.fixture
-def two_clients() -> clients:
+def two_clients() -> Clients:
     client1 = socketio.test_client(app)
     client2 = socketio.test_client(app)
 
@@ -32,8 +32,8 @@ def two_clients() -> clients:
     color2 = events2[0]["args"][0]["player"]
 
     room = rooms["a"]
-    sid1 = next(sid for sid, color in room.players.items() if color == color1)
-    sid2 = next(sid for sid, color in room.players.items() if color == color2)
+    sid1 = next(Sid for Sid, color in room.players.items() if color == color1)
+    sid2 = next(Sid for Sid, color in room.players.items() if color == color2)
 
     return (client1, sid1), (client2, sid2)
 
@@ -43,10 +43,10 @@ def clear_rooms() -> None:
     rooms.clear()
 
 
-def get_white_black_clients(two_clients: clients, room: Room) -> WhiteBlackClients:
+def get_white_black_clients(two_clients: Clients, room: Room) -> WhiteBlackClients:
     (client1, sid1), (client2, sid2) = two_clients
 
-    if room.players[sid1] == Spieler.WHITE:
+    if room.players[sid1] == Player.WHITE:
         return client1, sid1, client2, sid2
     else:
         return client2, sid2, client1, sid1
@@ -55,18 +55,18 @@ def get_white_black_clients(two_clients: clients, room: Room) -> WhiteBlackClien
 class TestRoom:
     _room_name = "a"
 
-    def test_two_clients_join_same_room(self, two_clients: clients) -> None:
+    def test_two_clients_join_same_room(self, two_clients: Clients) -> None:
         (_, sid1), (_, sid2) = two_clients
         assert self._room_name in rooms
         room: Room = rooms[self._room_name]
 
-        assert room._turn == Spieler.WHITE
+        assert room._turn == Player.WHITE
         assert len(room.players) == 2
         assert room.gameState == GameState.PLACE_SOLDATEN
         assert sid1 in room.players
         assert sid2 in room.players
 
-    def test_white_place_first(self, two_clients: clients):
+    def test_white_place_first(self, two_clients: Clients):
         room: Room = rooms[self._room_name]
         white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
         white_client.emit("place_soldaten", 1, 1, self._room_name)
@@ -83,7 +83,7 @@ class TestRoom:
         assert any("white muss zuerst alles placen" in str(ev) for ev in info_events)
         assert room.board[6][0] == 0
 
-    def test_white_place_all(self, two_clients: clients) -> None:
+    def test_white_place_all(self, two_clients: Clients) -> None:
         room: Room = rooms[self._room_name]
         white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
 
@@ -105,7 +105,7 @@ class TestRoom:
             if msg["name"] == "info"
         )
 
-    def test_black_place_all(self, two_clients: clients) -> None:
+    def test_black_place_all(self, two_clients: Clients) -> None:
         self.test_white_place_all(two_clients)
 
         room: Room = rooms[self._room_name]
@@ -121,22 +121,22 @@ class TestRoom:
         black_client.get_received()
         assert room.board[9][7] == Town.BLACK
 
-    def test_gamestate(self, two_clients: clients) -> None:
+    def test_gamestate(self, two_clients: Clients) -> None:
         self.test_black_place_all(two_clients)
         room: Room = rooms[self._room_name]
         assert room.gameState == GameState.MOVE_SOLDATEN
 
-    def test_all_objects_placed(self, two_clients: clients) -> None:
+    def test_all_objects_placed(self, two_clients: Clients) -> None:
         self.test_black_place_all(two_clients)
         room: Room = rooms[self._room_name]
         assert room._all_objects_placed()
 
-    def test_turn_white(self, two_clients: clients) -> None:
+    def test_turn_white(self, two_clients: Clients) -> None:
         self.test_black_place_all(two_clients)
         room: Room = rooms[self._room_name]
-        assert room._turn == Spieler.WHITE
+        assert room._turn == Player.WHITE
 
-    def test_black_move_first_not_allowed(self, two_clients: clients) -> None:
+    def test_black_move_first_not_allowed(self, two_clients: Clients) -> None:
         self.test_black_place_all(two_clients)
         room: Room = rooms[self._room_name]
         _, _, black_client, _ = get_white_black_clients(two_clients, room)
@@ -150,7 +150,7 @@ class TestRoom:
         assert room.board[startX][startY] == Soldier.BLACK
         assert room.board[endX][endY] == EMPTY
 
-    def test_white_move_tower_not_allowed(self, two_clients: clients) -> None:
+    def test_white_move_tower_not_allowed(self, two_clients: Clients) -> None:
         self.test_black_place_all(two_clients)
         room: Room = rooms[self._room_name]
         white_client, _, _, _ = get_white_black_clients(two_clients, room)
@@ -165,7 +165,7 @@ class TestRoom:
         assert room.board[startX][startY] == Town.WHITE
         assert room.board[endX][endY] == EMPTY
 
-    def test_first_white_move(self, two_clients: clients) -> None:
+    def test_first_white_move(self, two_clients: Clients) -> None:
         self.test_all_objects_placed(two_clients)
         room: Room = rooms[self._room_name]
         white_client, _, _, _ = get_white_black_clients(two_clients, room)
@@ -177,7 +177,7 @@ class TestRoom:
         assert room.board[startX][startY] == EMPTY
         assert room.board[endX][endY] == Soldier.WHITE
 
-    def test_black_move_town_not_allowed(self, two_clients: clients) -> None:
+    def test_black_move_town_not_allowed(self, two_clients: Clients) -> None:
         self.test_first_white_move(two_clients)
         room: Room = rooms[self._room_name]
         _, _, black_client, _ = get_white_black_clients(two_clients, room)
@@ -192,7 +192,7 @@ class TestRoom:
         assert room.board[startX][startY] == Town.BLACK
         assert room.board[endX][endY] == EMPTY
 
-    def test_black_move_coords_invalide(self, two_clients: clients) -> None:
+    def test_black_move_coords_invalide(self, two_clients: Clients) -> None:
         self.test_first_white_move(two_clients)
         room: Room = rooms[self._room_name]
         _, _, black_client, _ = get_white_black_clients(two_clients, room)
@@ -207,7 +207,7 @@ class TestRoom:
             recv[0]["args"][0]["message"] == f"Not valide {startX, startY} {endX, endY}"
         )
 
-    def test_white_move_coords_invalide(self, two_clients: clients) -> None:
+    def test_white_move_coords_invalide(self, two_clients: Clients) -> None:
         self.test_first_move_black(two_clients)
         room: Room = rooms[self._room_name]
         white_client, _, _, _ = get_white_black_clients(two_clients, room)
@@ -222,7 +222,7 @@ class TestRoom:
             recv[0]["args"][0]["message"] == f"Not valide {startX, startY} {endX, endY}"
         )
 
-    def test_first_move_black(self, two_clients: clients) -> None:
+    def test_first_move_black(self, two_clients: Clients) -> None:
         self.test_first_white_move(two_clients)
         room: Room = rooms[self._room_name]
         _, _, black_client, _ = get_white_black_clients(two_clients, room)
@@ -235,7 +235,7 @@ class TestRoom:
         assert room.board[startX][startY] == EMPTY
         assert room.board[endX][endY] == Soldier.BLACK
 
-    def test_capture_soldier_black(self, two_clients: clients) -> None:
+    def test_capture_soldier_black(self, two_clients: Clients) -> None:
         self.test_first_move_black(two_clients)
         room: Room = rooms[self._room_name]
         white_client, _, _, _ = get_white_black_clients(two_clients, room)
@@ -249,9 +249,9 @@ class TestRoom:
         assert room.black_captured == 0
         assert room.board[startX][startY] == EMPTY
         assert room.board[endX][endY] == Soldier.WHITE
-        assert room._turn == Spieler.BLACK
+        assert room._turn == Player.BLACK
 
-    def test_capture_soldier_white(self, two_clients: clients) -> None:
+    def test_capture_soldier_white(self, two_clients: Clients) -> None:
         self.test_capture_soldier_black(two_clients)
         room: Room = rooms[self._room_name]
         white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
@@ -268,9 +268,9 @@ class TestRoom:
         assert room.black_captured == 1
         assert room.board[startX][startY] == EMPTY
         assert room.board[endX - 1][endY] == Soldier.BLACK
-        assert room._turn == Spieler.WHITE
+        assert room._turn == Player.WHITE
 
-    def test_first_cannon_move_white(self, two_clients: clients) -> None:
+    def test_first_cannon_move_white(self, two_clients: Clients) -> None:
         self.test_black_place_all(two_clients)
         room: Room = rooms[self._room_name]
         white_client, _, _, _ = get_white_black_clients(two_clients, room)
@@ -281,9 +281,9 @@ class TestRoom:
 
         assert room.board[startX][startY] == EMPTY
         assert room.board[endX][endY] == Soldier.WHITE
-        assert room._turn == Spieler.BLACK
+        assert room._turn == Player.BLACK
 
-    def test_cannon_move_white_not_allowed(self, two_clients: clients) -> None:
+    def test_cannon_move_white_not_allowed(self, two_clients: Clients) -> None:
         self.test_black_place_all(two_clients)
         room: Room = rooms[self._room_name]
         white_client, _, _, _ = get_white_black_clients(two_clients, room)
@@ -299,9 +299,9 @@ class TestRoom:
         )
         assert room.board[startX][startY] == Soldier.WHITE
         assert room.board[endX][endY] == EMPTY
-        assert room._turn == Spieler.WHITE
+        assert room._turn == Player.WHITE
 
-    def test_first_cannon_move_black(self, two_clients: clients) -> None:
+    def test_first_cannon_move_black(self, two_clients: Clients) -> None:
         self.test_first_white_move(two_clients)
         room: Room = rooms[self._room_name]
         _, _, black_client, _ = get_white_black_clients(two_clients, room)
@@ -312,9 +312,9 @@ class TestRoom:
 
         assert room.board[startX][startY] == EMPTY
         assert room.board[endX][endY] == Soldier.BLACK
-        assert room._turn == Spieler.WHITE
+        assert room._turn == Player.WHITE
 
-    def test_cannon_move_black_not_allowed(self, two_clients: clients) -> None:
+    def test_cannon_move_black_not_allowed(self, two_clients: Clients) -> None:
         self.test_first_white_move(two_clients)
         room: Room = rooms[self._room_name]
         _, _, black_client, _ = get_white_black_clients(two_clients, room)
@@ -331,13 +331,13 @@ class TestRoom:
         )
         assert room.board[startX][startY] == Soldier.BLACK
         assert room.board[endX][endY] == EMPTY
-        assert room._turn == Spieler.BLACK
+        assert room._turn == Player.BLACK
 
-    def test_soldier_black_cant_move_back(self, two_clients: clients) -> None:
+    def test_soldier_black_cant_move_back(self, two_clients: Clients) -> None:
         self.test_cannon_move_black_not_allowed(two_clients)
         room: Room = rooms[self._room_name]
         room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Spieler.BLACK
+        room._turn = Player.BLACK
         room.board = [
             [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -359,9 +359,9 @@ class TestRoom:
         recv = black_client.get_received()
 
         assert recv[0]["args"][0]["message"] == "du darf nicht 1 schritt nachhinten"
-        assert room._turn == Spieler.BLACK
+        assert room._turn == Player.BLACK
 
-    def test_soldier_white_cant_move_back(self, two_clients: clients) -> None:
+    def test_soldier_white_cant_move_back(self, two_clients: Clients) -> None:
         self.test_black_place_all(two_clients)
         room: Room = rooms[self._room_name]
         room.board = [
@@ -387,13 +387,13 @@ class TestRoom:
         assert recv[0]["args"][0]["message"] == "du darf nicht 1 schritt nachhinten"
         assert room.board[startX][startY] == Soldier.WHITE
         assert room.board[endX][endY] == EMPTY
-        assert room._turn == Spieler.WHITE
+        assert room._turn == Player.WHITE
 
-    def test_cannon_shoot_black_front(self, two_clients: clients) -> None:
+    def test_cannon_shoot_black_front(self, two_clients: Clients) -> None:
         self.test_cannon_move_black_not_allowed(two_clients)
         room: Room = rooms[self._room_name]
         room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Spieler.BLACK
+        room._turn = Player.BLACK
         room.board = [
             [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -415,17 +415,17 @@ class TestRoom:
         recv = black_client.get_received()
 
         assert recv[0]["args"][0]["message"] == f"cannon shoot capture {(endX, endY)}"
-        assert room._turn == Spieler.WHITE
+        assert room._turn == Player.WHITE
         assert room.board[startX][startY] == Soldier.BLACK
         assert room.board[endX][endY] == EMPTY
         assert room.black_captured == 1
         assert room.white_captured == 0
 
-    def test_cannon_shoot_black_empty_field(self, two_clients: clients):
+    def test_cannon_shoot_black_empty_field(self, two_clients: Clients):
         self.test_cannon_move_black_not_allowed(two_clients)
         room: Room = rooms[self._room_name]
         room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Spieler.BLACK
+        room._turn = Player.BLACK
         room.board = [
             [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -449,15 +449,15 @@ class TestRoom:
         assert recv[0]["args"][0]["message"] == "target is invalide"
         assert room.board[startX][startY] == Soldier.BLACK
         assert room.board[endX][endY] == EMPTY
-        assert room._turn == Spieler.BLACK
+        assert room._turn == Player.BLACK
         assert room.black_captured == 0
         assert room.white_captured == 0
 
-    def test_cannon_shoot_black_side(self, two_clients: clients):
+    def test_cannon_shoot_black_side(self, two_clients: Clients):
         self.test_cannon_move_black_not_allowed(two_clients)
         room: Room = rooms[self._room_name]
         room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Spieler.BLACK
+        room._turn = Player.BLACK
         room.board = [
             [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -479,17 +479,17 @@ class TestRoom:
         recv = black_client.get_received()
 
         assert recv[0]["args"][0]["message"] == f"cannon shoot capture {(endX, endY)}"
-        assert room._turn == Spieler.WHITE
+        assert room._turn == Player.WHITE
         assert room.board[startX][startY] == Soldier.BLACK
         assert room.board[endX][endY] == EMPTY
         assert room.black_captured == 1
         assert room.white_captured == 0
 
-    def test_cannon_shoot_black_side_plus(self, two_clients: clients):
+    def test_cannon_shoot_black_side_plus(self, two_clients: Clients):
         self.test_cannon_move_black_not_allowed(two_clients)
         room: Room = rooms[self._room_name]
         room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Spieler.BLACK
+        room._turn = Player.BLACK
         room.board = [
             [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -511,17 +511,17 @@ class TestRoom:
         recv = black_client.get_received()
 
         assert recv[0]["args"][0]["message"] == f"cannon shoot capture {(endX, endY)}"
-        assert room._turn == Spieler.WHITE
+        assert room._turn == Player.WHITE
         assert room.board[startX][startY] == Soldier.BLACK
         assert room.board[endX][endY] == EMPTY
         assert room.black_captured == 1
         assert room.white_captured == 0
 
-    def test_cannon_shoot_black_front_fail(self, two_clients: clients):
+    def test_cannon_shoot_black_front_fail(self, two_clients: Clients):
         self.test_cannon_move_black_not_allowed(two_clients)
         room: Room = rooms[self._room_name]
         room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Spieler.BLACK
+        room._turn = Player.BLACK
         room.board = [
             [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -548,11 +548,11 @@ class TestRoom:
         assert room.black_captured == 0
         assert room.white_captured == 0
 
-    def test_cannon_shoot_black_diagonaly_fail(self, two_clients: clients):
+    def test_cannon_shoot_black_diagonaly_fail(self, two_clients: Clients):
         self.test_cannon_move_black_not_allowed(two_clients)
         room: Room = rooms[self._room_name]
         room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Spieler.BLACK
+        room._turn = Player.BLACK
         room.board = [
             [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -579,11 +579,11 @@ class TestRoom:
         assert room.black_captured == 0
         assert room.white_captured == 0
 
-    def test_cannon_shoot_black_diagonaly_back_soldier(self, two_clients: clients):
+    def test_cannon_shoot_black_diagonaly_back_soldier(self, two_clients: Clients):
         self.test_cannon_move_black_not_allowed(two_clients)
         room: Room = rooms[self._room_name]
         room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Spieler.BLACK
+        room._turn = Player.BLACK
         room.board = [
             [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -607,15 +607,15 @@ class TestRoom:
         assert recv[0]["args"][0]["message"] == f"cannon shoot capture {endX, endY}"
         assert room.board[startX][startY] == Soldier.BLACK
         assert room.board[endX][endY] == EMPTY
-        assert room._turn == Spieler.WHITE
+        assert room._turn == Player.WHITE
         assert room.black_captured == 1
         assert room.white_captured == 0
 
-    def test_cannon_shoot_black_empty_field_error(self, two_clients: clients):
+    def test_cannon_shoot_black_empty_field_error(self, two_clients: Clients):
         self.test_cannon_move_black_not_allowed(two_clients)
         room: Room = rooms[self._room_name]
         room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Spieler.BLACK
+        room._turn = Player.BLACK
         room.board = [
             [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -642,11 +642,11 @@ class TestRoom:
         assert room.black_captured == 0
         assert room.white_captured == 0
 
-    def test_cannon_shoot_black_moving_range_error(self, two_clients: clients):
+    def test_cannon_shoot_black_moving_range_error(self, two_clients: Clients):
         self.test_cannon_move_black_not_allowed(two_clients)
         room: Room = rooms[self._room_name]
         room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Spieler.BLACK
+        room._turn = Player.BLACK
         room.board = [
             [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -676,11 +676,11 @@ class TestRoom:
         assert room.black_captured == 0
         assert room.white_captured == 0
 
-    def test_cannon_shoot_white_front(self, two_clients: clients):
+    def test_cannon_shoot_white_front(self, two_clients: Clients):
         self.test_cannon_move_black_not_allowed(two_clients)
         room: Room = rooms[self._room_name]
         room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Spieler.WHITE
+        room._turn = Player.WHITE
         room.board = [
             [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
             [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -707,11 +707,11 @@ class TestRoom:
         assert room.black_captured == 0
         assert room.white_captured == 1
 
-    def test_cannon_shoot_white_front_intercepted(self, two_clients: clients):
+    def test_cannon_shoot_white_front_intercepted(self, two_clients: Clients):
         self.test_cannon_move_black_not_allowed(two_clients)
         room: Room = rooms[self._room_name]
         room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Spieler.WHITE
+        room._turn = Player.WHITE
         room.board = [
             [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
             [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -738,11 +738,11 @@ class TestRoom:
         assert room.black_captured == 0
         assert room.white_captured == 0
 
-    def test_cannon_shoot_white_diagonally_left(self, two_clients: clients):
+    def test_cannon_shoot_white_diagonally_left(self, two_clients: Clients):
         self.test_cannon_move_black_not_allowed(two_clients)
         room: Room = rooms[self._room_name]
         room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Spieler.WHITE
+        room._turn = Player.WHITE
         room.board = [
             [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
             [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -769,11 +769,11 @@ class TestRoom:
         assert room.black_captured == 0
         assert room.white_captured == 1
 
-    def test_cannon_shoot_white_front_interception(self, two_clients: clients):
+    def test_cannon_shoot_white_front_interception(self, two_clients: Clients):
         self.test_cannon_move_black_not_allowed(two_clients)
         room: Room = rooms[self._room_name]
         room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Spieler.WHITE
+        room._turn = Player.WHITE
         room.board = [
             [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
             [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -800,7 +800,7 @@ class TestRoom:
         assert room.black_captured == 0
         assert room.white_captured == 0
 
-    def test_soldier_black_capture_town_white(self, two_clients: clients):
+    def test_soldier_black_capture_town_white(self, two_clients: Clients):
         self.test_first_white_move(two_clients)
         room: Room = rooms[self._room_name]
         room.board = [
@@ -828,9 +828,9 @@ class TestRoom:
         assert room.board[startX][startY] == EMPTY
         assert room.black_captured == 0
         assert room.white_captured == 0
-        assert room._turn == Spieler.BLACK
+        assert room._turn == Player.BLACK
 
-    def test_soldier_white_capture_town_black(self, two_clients: clients):
+    def test_soldier_white_capture_town_black(self, two_clients: Clients):
         self.test_first_move_black(two_clients)
         room: Room = rooms[self._room_name]
         room.board = [
@@ -858,9 +858,9 @@ class TestRoom:
         assert room.board[startX][startY] == EMPTY
         assert room.black_captured == 0
         assert room.white_captured == 0
-        assert room._turn == Spieler.WHITE
+        assert room._turn == Player.WHITE
 
-    def test_white_cannon_shoot_capture_town(self, two_clients: clients):
+    def test_white_cannon_shoot_capture_town(self, two_clients: Clients):
         self.test_first_move_black(two_clients)
         room: Room = rooms[self._room_name]
         room.board = [
@@ -887,9 +887,9 @@ class TestRoom:
         assert room.gameState == GameState.GAME_OVER
         assert room.black_captured == 0
         assert room.white_captured == 0
-        assert room._turn == Spieler.WHITE
+        assert room._turn == Player.WHITE
 
-    def test_black_cannon_shoot_capture_town(self, two_clients: clients):
+    def test_black_cannon_shoot_capture_town(self, two_clients: Clients):
         self.test_first_white_move(two_clients)
         room: Room = rooms[self._room_name]
         room.board = [
@@ -916,16 +916,16 @@ class TestRoom:
         assert room.gameState == GameState.GAME_OVER
         assert room.black_captured == 0
         assert room.white_captured == 0
-        assert room._turn == Spieler.BLACK
+        assert room._turn == Player.BLACK
 
-    def test_black_surrender(self, two_clients: clients):
+    def test_black_surrender(self, two_clients: Clients):
         self.test_first_white_move(two_clients)
         room: Room = rooms[self._room_name]
 
         _, _, black_client, _ = get_white_black_clients(two_clients, room)
         black_client.get_received()  # clear all messages in list
 
-        spieler: Spieler = room._turn
+        spieler: Player = room._turn
         black_client.emit("surrender", room._turn, room.name)
 
         recv = black_client.get_received()
@@ -933,15 +933,15 @@ class TestRoom:
         assert recv[0]["args"][0]["message"] == "Game Over"
         assert recv[0]["args"][0]["winner"] == f"Winner {spieler.opponent.name}"
         assert room.gameState == GameState.GAME_OVER
-        assert room._turn == Spieler.BLACK
+        assert room._turn == Player.BLACK
 
-    def test_white_surrender(self, two_clients: clients):
+    def test_white_surrender(self, two_clients: Clients):
         self.test_first_move_black(two_clients)
         room: Room = rooms[self._room_name]
         white_client, _, _, _ = get_white_black_clients(two_clients, room)
         white_client.get_received()  # clear all messages in list
 
-        spieler: Spieler = room._turn
+        spieler: Player = room._turn
         white_client.emit("surrender", room._turn, room.name)
 
         recv = white_client.get_received()
@@ -949,9 +949,9 @@ class TestRoom:
         assert recv[0]["args"][0]["message"] == "Game Over"
         assert recv[0]["args"][0]["winner"] == f"Winner {spieler.opponent.name}"
         assert room.gameState == GameState.GAME_OVER
-        assert room._turn == Spieler.WHITE
+        assert room._turn == Player.WHITE
 
-    def test_black_disconnect(self, two_clients: clients):
+    def test_black_disconnect(self, two_clients: Clients):
         self.test_first_white_move(two_clients)
         room: Room = rooms[self._room_name]
         white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
@@ -966,7 +966,7 @@ class TestRoom:
         assert white_client.is_connected() == True
         assert len(room.players) == 2
 
-    def test_white_disconnect(self, two_clients: clients):
+    def test_white_disconnect(self, two_clients: Clients):
         self.test_first_move_black(two_clients)
         room: Room = rooms[self._room_name]
         white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
@@ -982,7 +982,7 @@ class TestRoom:
         assert white_client.is_connected() == False
         assert len(room.players) == 2
 
-    def test_move_soldier_white_to_white_soldier(self, two_clients: clients):
+    def test_move_soldier_white_to_white_soldier(self, two_clients: Clients):
         self.test_first_move_black(two_clients)
         room: Room = rooms[self._room_name]
         white_client, _, _, _ = get_white_black_clients(two_clients, room)
@@ -1008,11 +1008,11 @@ class TestRoom:
         assert recv[0]["args"][0]["message"] == "Feld ist besetzt"
         assert room.board[startX][startY] == Soldier.WHITE
         assert room.board[endX][endY] == Soldier.WHITE
-        assert room._turn == Spieler.WHITE
+        assert room._turn == Player.WHITE
         assert room.black_captured == 0
         assert room.white_captured == 0
 
-    def test_move_soldier_black_to_black_soldier(self, two_clients: clients):
+    def test_move_soldier_black_to_black_soldier(self, two_clients: Clients):
         self.test_first_white_move(two_clients)
         room: Room = rooms[self._room_name]
         _, _, black_client, _ = get_white_black_clients(two_clients, room)
@@ -1038,6 +1038,6 @@ class TestRoom:
         assert recv[0]["args"][0]["message"] == "Feld ist besetzt"
         assert room.board[startX][startY] == Soldier.BLACK
         assert room.board[endX][endY] == Soldier.BLACK
-        assert room._turn == Spieler.BLACK
+        assert room._turn == Player.BLACK
         assert room.black_captured == 0
         assert room.white_captured == 0
