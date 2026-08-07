@@ -719,10 +719,10 @@ def handle_surrender(spieler: int, room: str):
     if not (r := rooms.get(room)):
         return emit("info", f"No room with this name {room}", to=sid)
 
-    result = r.surrender(Spieler(spieler))
+    winner = r.surrender(Spieler(spieler))
     return emit(
         "info",
-        {"message": "Game Over", "winner": f"Winner {result.name}"},
+        {"message": "Game Over", "winner": f"Winner {winner.name}"},
         broadcast=True,
     )
 

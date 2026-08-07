@@ -33,6 +33,7 @@
     <p id="playerColor"></p>
     <p id="captureCounter"></p>
     <p id="winnerEl"></p>
+    <button id="surrenderBtn" style="visibility: hidden">Surrender</button>
     <div id="board"></div>
 
     <script>
@@ -58,11 +59,16 @@
       const captureCounterEl = document.getElementById("captureCounter");
       const turnEl = document.getElementById("turn");
       const joinBtn = document.getElementById("joinBtn");
+      const surrenderBtn = document.getElementById("surrenderBtn");
       const winnerEl = document.getElementById("winnerEl");
 
       infoEl.innerText = "Enter a room name and click Join.";
 
-      document.getElementById("joinBtn").onclick = () => {
+      surrenderBtn.onclick = () => {
+        socket.emit("surrender", player, room);
+      };
+
+      joinBtn.onclick = () => {
         const name = document.getElementById("roomInput").value.trim();
         if (!name) return alert("Enter room name");
         room = name;
@@ -170,6 +176,7 @@
 
         infoEl.innerText = "";
         captureCounterEl.innerText = `Capture: ${data.capture}`;
+        surrenderBtn.style.visibility = "visible";
 
         if (data.board) {
           field = data.board;
