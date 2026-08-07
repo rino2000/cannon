@@ -142,7 +142,7 @@
       }
 
       function handleCellClick(x, y) {
-        if (!field || gameState === 3) return;
+        if (!field || gameState === 2 || gameState === 3) return;
 
         if (gameState === 0) {
           socket.emit("place_soldaten", x, y, room);
@@ -216,17 +216,14 @@
         }
 
         if (data.capture) {
-          captureCounter = data.capture;
-          captureCounterEl.innerText = `Capture: ${captureCounter}`;
+          captureCounterEl.innerText = data.capture;
         }
 
         if (data.turn) {
-          turn = data.turn;
-          turnEl.innerText = "Turn: " + (data.turn === 1 ? "White" : "Black");
+          turnEl.innerText = turn;
         }
 
         if (data.winner) {
-          winner = data.winner;
           winnerEl.innerText = data.winner;
         }
 
@@ -236,6 +233,9 @@
       });
 
       socket.on("error", (err) => console.error(err));
+      socket.on("disconnect", () => {
+        socket.emit("disconnect", room);
+      });
     </script>
   </body>
 </html>

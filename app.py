@@ -111,8 +111,8 @@ class Room:
             {
                 "board": self.board,
                 "player": color.value,
-                "capture": 0,
-                "turn": self._turn.value,
+                "capture": f"Capture: {0}",
+                "turn": f"Turn: {self._turn.name}",
                 "message": f"Soldaten left {MAX_SOLDIERS}",
             },
             to=sid,
@@ -213,14 +213,16 @@ class Room:
                 emit("info", {"message": "Wait for black"}, to=sid)
                 emit("info", {"message": "Now place soldiers"}, to=opponent_sid)
                 self.switch_turn(player)
-                return emit("info", {"turn": self._turn.value}, broadcast=True)
+                return emit(
+                    "info", {"turn": f"Turn: {self._turn.name}"}, broadcast=True
+                )
             elif town == 0 and player == Player.BLACK:
                 self._place_town(x, y, player)
                 emit("update_field", self.board, to=sid, broadcast=True)
                 self.gameState = GameState.MOVE_SOLDATEN
                 emit("info", {"gameState": self.gameState}, broadcast=True)
                 self.switch_turn(player)
-                emit("info", {"turn": self._turn.value}, broadcast=True)
+                emit("info", {"turn": f"Turn: {self._turn.name}"}, broadcast=True)
                 emit("info", {"message": "Wait for White"}, to=sid)
                 return emit("info", {"message": "Now Move Soldiers"}, to=opponent_sid)
 
@@ -237,6 +239,7 @@ class Room:
             "info",
             {
                 "message": "Game Over",
+                "turn": "",
                 "gameState": self.gameState,
                 "winner": f"Winner: {player.name}",
             },
@@ -287,8 +290,8 @@ class Room:
 
         if (endX, endY) in self._check_capture_soldier(startX, startY, player):
             capture: int = self.capture_soldier(startX, startY, endX, endY, sid)
-            emit("info", {"capture": capture}, to=sid)
-            return emit("info", {"turn": self._turn.value}, broadcast=True)
+            emit("info", {"capture": f"Capture: {capture}"}, to=sid)
+            return emit("info", {"turn": f"Turn: {self._turn.name}"}, broadcast=True)
 
         if (
             player == Player.WHITE
@@ -317,7 +320,7 @@ class Room:
             return emit("info", {"message": "soldat darf nur 1 schritt machen"}, to=sid)
 
         self._swap(startX, startY, endX, endY, sid)
-        return emit("info", {"turn": self._turn.value}, broadcast=True)
+        return emit("info", {"turn": f"Turn: {self._turn.name}"}, broadcast=True)
 
     def _is_cannon_axis(self, startX: int, startY: int, sid: str) -> bool:
         player: Player = self._get_player(sid)
@@ -666,6 +669,8 @@ class Room:
 
     def disconnect(self, sid: str) -> None:
         opponent_sid: str = next(s for s in set(self.players.keys()) if s != sid)
+        with self._lock:
+            self.players.pop(opponent_sid)
         emit("info", {"message": "Opponent disconnected"}, to=opponent_sid)
         return flask_socketio.disconnect()
 
@@ -717,12 +722,17 @@ def handle_surrender(player: int, room: str):
     if not (r := rooms.get(room)):
         return emit("info", f"No room with this name {room}", to=sid)
 
-    winner = r.surrender(Player(player))
-    return emit(
+    winner: Player = r.surrender(Player(player))
+    emit(
         "info",
         {"message": "Game Over", "winner": f"Winner {winner.name}"},
         broadcast=True,
     )
+    lock = Lock()
+    with lock:
+        rooms.pop(r.name)
+        del r
+    return flask_socketio.disconnect()
 
 
 @socketio.on("disconnect")

@@ -1,3 +1,5 @@
+from pprint import pprint
+
 import pytest
 from flask_socketio import SocketIOTestClient
 
@@ -822,8 +824,10 @@ class TestRoom:
         black_client.emit("move_object", startX, startY, endX, endY, room.name)
 
         recv = black_client.get_received()
+        pprint(recv)
 
         assert recv[0]["args"][0]["message"] == "Game Over"
+        assert recv[0]["args"][0]["winner"] == f"Winner: {Player.BLACK.name}"
         assert room.gameState == GameState.GAME_OVER
         assert room.board[startX][startY] == EMPTY
         assert room.black_captured == 0
@@ -854,6 +858,7 @@ class TestRoom:
         recv = white_client.get_received()
 
         assert recv[0]["args"][0]["message"] == "Game Over"
+        assert recv[0]["args"][0]["winner"] == f"Winner: {Player.WHITE.name}"
         assert room.gameState == GameState.GAME_OVER
         assert room.board[startX][startY] == EMPTY
         assert room.black_captured == 0
@@ -925,13 +930,9 @@ class TestRoom:
         _, _, black_client, _ = get_white_black_clients(two_clients, room)
         black_client.get_received()  # clear all messages in list
 
-        spieler: Player = room._turn
         black_client.emit("surrender", room._turn, room.name)
 
-        recv = black_client.get_received()
-
-        assert recv[0]["args"][0]["message"] == "Game Over"
-        assert recv[0]["args"][0]["winner"] == f"Winner {spieler.opponent.name}"
+        assert black_client.is_connected() == False
         assert room.gameState == GameState.GAME_OVER
         assert room._turn == Player.BLACK
 
@@ -941,13 +942,9 @@ class TestRoom:
         white_client, _, _, _ = get_white_black_clients(two_clients, room)
         white_client.get_received()  # clear all messages in list
 
-        spieler: Player = room._turn
         white_client.emit("surrender", room._turn, room.name)
 
-        recv = white_client.get_received()
-
-        assert recv[0]["args"][0]["message"] == "Game Over"
-        assert recv[0]["args"][0]["winner"] == f"Winner {spieler.opponent.name}"
+        assert white_client.is_connected() == False
         assert room.gameState == GameState.GAME_OVER
         assert room._turn == Player.WHITE
 
@@ -964,7 +961,7 @@ class TestRoom:
         assert recv[0]["args"][0]["message"] == "Opponent disconnected"
         assert black_client.is_connected() == False
         assert white_client.is_connected() == True
-        assert len(room.players) == 2
+        assert len(room.players) == 1
 
     def test_white_disconnect(self, two_clients: Clients):
         self.test_first_move_black(two_clients)
@@ -980,7 +977,7 @@ class TestRoom:
         assert recv[0]["args"][0]["message"] == "Opponent disconnected"
         assert black_client.is_connected() == True
         assert white_client.is_connected() == False
-        assert len(room.players) == 2
+        assert len(room.players) == 1
 
     def test_move_soldier_white_to_white_soldier(self, two_clients: Clients):
         self.test_first_move_black(two_clients)
