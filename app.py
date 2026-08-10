@@ -2,7 +2,7 @@ import random
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import IntEnum
-from itertools import batched, chain, compress, filterfalse, starmap
+from itertools import chain, compress, filterfalse, starmap
 from threading import Lock
 from typing import Final, Self
 
@@ -290,12 +290,7 @@ class Room:
             emit("info", {"capture": f"Capture: {capture}"}, to=sid)
             return emit("info", {"turn": f"Turn: {self._turn.name}"}, broadcast=True)
 
-        if (
-            player == Player.WHITE
-            and (startX - endX) == 1
-            or player == Player.BLACK
-            and (startX - endX) == -1
-        ):
+        if (startX - endX) == (1 if player == Player.WHITE else -1):
             return emit(
                 "info", {"message": "du darf nicht 1 schritt nachhinten"}, to=sid
             )
@@ -326,19 +321,15 @@ class Room:
         return (startX, startY) == axis
 
     def _check_capture_town(self, x: int, y: int, player: Player) -> list[Coord]:
-        coords = zip(
-            [x] * 2 + [x + player.direction] * 3,
-            [y - 1, y + 1] + list(range(y - 1, y + 2)),
-        )
-        v = filter(lambda c: self._validate_coordinate(*c), coords)
+        xs = [x] * 2 + [x + player.direction] * 3
+        ys = [y - 1, y + 1] + list(range(y - 1, y + 2))
+        v = filter(lambda c: self._validate_coordinate(*c), zip(xs, ys))
         return filterfalse(lambda c: self.board[c[0]][c[1]] != player.opponent_town, v)
 
     def _check_capture_soldier(self, x: int, y: int, player: Player) -> list[Coord]:
-        coords = zip(
-            [x] * 2 + [x + player.direction] * 3,
-            [y - 1, y + 1] + list(range(y - 1, y + 2)),
-        )
-        v = filter(lambda c: self._validate_coordinate(*c), coords)
+        xs = [x] * 2 + [x + player.direction] * 3
+        ys = [y - 1, y + 1] + list(range(y - 1, y + 2))
+        v = filter(lambda c: self._validate_coordinate(*c), zip(xs, ys))
         return filterfalse(lambda c: self.board[c[0]][c[1]] != player.opponent, v)
 
     def _capture_soldier(self, player: Player) -> int:
@@ -360,132 +351,73 @@ class Room:
     def _check_threat(self, x: int, y: int, player: Player) -> bool:
         xs = [x] * 2 + [x + player.direction] * 3
         ys = [y - 1, y + 1] + list(range(y - 1, y + 2))
-        coords = zip(xs, ys)
-        valid = filter(lambda c: self._validate_coordinate(*c), coords)
+        valid = filter(lambda c: self._validate_coordinate(*c), zip(xs, ys))
         return any(self.board[c[0]][c[1]] == player.opponent for c in valid)
 
     def _check_interception_thread_move(
         self, x: int, y: int, player: Player
     ) -> list[Coord]:
-        """Return list of all possible thread moves"""
-
-        direction: int = player.direction
-
-        coords = [
-            (
-                (x - 1 * direction, y),  # back
-                (x - 2 * direction, y),
-            ),
-            (
-                (x - 1 * direction, y + 1),  # fields back diagonally right
-                (x - 2 * direction, y + 2),
-            ),
-            (
-                (x - 1 * direction, y - 1),  # fields back diagonally left
-                (x - 2 * direction, y - 2),
-            ),
-        ]
-
-        # valide coordinates
-        valide_coords = batched(
-            filter(lambda c: self._validate_coordinate(*c), chain(*coords)), 2
-        )
-
-        f = filterfalse(lambda x: len(x) < 2, valide_coords)
+        offsets = [((-1, 0), (-2, 0)), ((-1, 1), (-2, 2)), ((-1, -1), (-2, -2))]
 
         interceptions = list(Soldier) + list(Town)
-        all_possible_coords = list(compress(valide_coords, f))
+        valid_pairs = [
+            (first, second)
+            for (dx1, dy1), (dx2, dy2) in offsets
+            for first, second in [
+                (
+                    (x + dx1 * player.direction, y + dy1),
+                    (x + dx2 * player.direction, y + dy2),
+                )
+            ]
+            if self._validate_coordinate(*first)
+            and self._validate_coordinate(*second)
+            and self.board[first[0]][first[1]] not in interceptions
+            and self.board[second[0]][second[1]] not in interceptions
+        ]
 
-        # check for interception
-        for coord in all_possible_coords:
-            x, y = coord
-            if (self.board[x[0]][x[1]] in interceptions) or (
-                self.board[y[0]][y[1]] in interceptions
-            ):
-                all_possible_coords.remove(coord)
-
-        # return the biggest or smalest coordinate in tuple because the player are only
-        # allowed to move 2 fields back and not 1 field
-        return (
-            list(map(max, all_possible_coords))
-            if player == Player.BLACK
-            else list(map(min, all_possible_coords))
-        )
+        # Return the max or min of each pair depending on player
+        return [
+            max(pair) if player == Player.BLACK else min(pair) for pair in valid_pairs
+        ]
 
     def _get_all_cannons(self, x: int, y: int, player: Player):
-        direction: int = player.direction
-        soldier: Soldier = player.soldier.value
+        soldier = player.soldier.value
 
-        all_possible_coords: list[tuple[Coord, Coord]] = []
-
-        vertical = [
-            # 2 druber
-            ((x + 1 * direction, y), (x + 2 * direction, y)),
-            # 2 drunter
-            ((x - 1 * direction, y), (x - 2 * direction, y)),
-            # zwischen 2 vertical
-            ((x + 1 * direction, y), (x - 1 * direction, y)),
+        # All offset-pairs: ( (dx1,dy1), (dx2,dy2) )
+        offsets = [
+            ((1, 0), (2, 0)),
+            ((-1, 0), (-2, 0)),
+            ((1, 0), (-1, 0)),  # vertical
+            ((1, 1), (2, 2)),
+            ((-1, -1), (-2, -2)),
+            ((1, 1), (-1, -1)),
+            ((-1, 1), (-2, 2)),  # diag right
+            ((1, -1), (2, -2)),
+            ((-1, -1), (-2, -2)),
+            ((1, -1), (-1, 1)),  # diag left
+            ((0, -1), (0, -2)),
+            ((0, -1), (0, 1)),
+            ((0, 1), (0, 2)),  # horizontal
         ]
-        all_possible_coords.extend(vertical)
 
-        diagonally_right = [
-            # 2 digonal rechts boden
-            ((x + 1 * direction, y + 1), (x + 2 * direction, y + 2)),
-            # 2 digonal rechts spitze
-            ((x - 1 * direction, y - 1), (x - 2 * direction, y - 2)),
-            # 2 diagonal rechts zwischen
-            ((x + 1 * direction, y + 1), (x - 1 * direction, y - 1)),
-            ((x - 1 * direction, y + 1), (x - 2 * direction, y + 2)),
-        ]
-        all_possible_coords.extend(diagonally_right)
-
-        diagonally_left = [
-            # 2 digonal links boden
-            ((x + 1 * direction, y - 1), (x + 2 * direction, y - 2)),
-            # 2 digonal links spitze
-            ((x - 1 * direction, y - 1), (x - 2 * direction, y - 2)),
-            # 2 diagonal links zwischen
-            ((x + 1 * direction, y - 1), (x - 1 * direction, y + 1)),
-        ]
-        all_possible_coords.extend(diagonally_left)
-
-        horizontal = [
-            # waagerecht rechts
-            ((x, y - 1), (x, y - 2)),
-            # waagerecht rechts
-            ((x, y - 1), (x, y + 1)),
-            # waagerecht rechts
-            ((x, y + 1), (x, y + 2)),
-        ]
-        all_possible_coords.extend(horizontal)
-
-        valide = []
-
-        for first, second in all_possible_coords:
-            if self._validate_coordinate(*first) and self._validate_coordinate(*second):
-                (xx, yy), (xxx, yyy) = first, second
-
-                # check if the selected coord is a soldier and the possible coords around
-                if (
-                    self.board[x][y] == soldier
-                    and self.board[xx][yy] == soldier
-                    and self.board[xxx][yyy] == soldier
-                ) or (
-                    self.board[xx][yy] == soldier and self.board[xxx][yyy] == soldier
-                ):
-                    valide.append((first, second, (x, y)))
-
-        return valide
+        # Generate all candidate pairs, validate, and check if both are soldiers
+        result = []
+        for (dx1, dy1), (dx2, dy2) in offsets:
+            first = (x + dx1 * player.direction, y + dy1)
+            second = (x + dx2 * player.direction, y + dy2)
+            if (
+                self._validate_coordinate(*first)
+                and self._validate_coordinate(*second)
+                and self.board[first[0]][first[1]] == soldier
+                and self.board[second[0]][second[1]] == soldier
+            ):
+                result.append((first, second, (x, y)))
+        return result
 
     def _get_cannon_gun_axis(
         self, coords: list[tuple[Coord, Coord]], player: Player
     ) -> Coord:
-        coords = list(chain(*coords))
-        return (
-            min(coords, key=lambda x: x[0])
-            if player == Player.WHITE
-            else max(coords, key=lambda x: x[0])
-        )
+        return (min if player == Player.WHITE else max)(chain(*coords))
 
     def _get_cannon_axis(self, coords: list[tuple[Coord, Coord]]):
         return [(min(x), max(x)) for x in coords]
@@ -496,11 +428,9 @@ class Room:
         return any(self.board[c[0]][c[1]] in list(Soldier) for c in validate)
 
     def _check_cannon_shoot_validate(self, startX: int, startY: int, player: Player):
-        coords = zip(
-            [startX + s * player.direction for s in range(4, 6) for _ in range(3)],
-            [startY + off for s in range(4, 6) for off in range(-s, s + 1, s)],
-        )
-        return filterfalse(lambda c: self._validate_coordinate(*c) == False, coords)
+        xs = [startX + s * player.direction for s in range(4, 6)] * 3
+        ys = [startY + off for s in range(4, 6) for off in range(-s, s + 1, s)]
+        return list(filter(lambda c: self._validate_coordinate(*c), zip(xs, ys)))
 
     def cannon_shoot(self, startX: int, startY: int, endX: int, endY: int, sid: str):
         player: Player = self._get_player(sid)
@@ -517,45 +447,33 @@ class Room:
             self.board[endX][endY] = EMPTY
         return emit("info", {"message": f"cannon shoot capture {endX, endY}"}, to=sid)
 
-    def _check_all_possbible_cannon_moves(
-        self, cannons: list[tuple[Coord]], player: Player
-    ):
-        """Return list of all coord pairs after calculate axis swap that are cannons"""
-
+    def _check_all_possbible_cannon_moves(self, cannons, player: Player):
+        d = player.direction
         axis = self._get_cannon_axis(cannons)
-        direction: int = player.direction
 
-        # (axis coord ,possible coord)
-        coords: list[tuple[Coord], tuple[Coord]] = []
+        # (axis coord, possible coord)
+        all_moves = chain.from_iterable(
+            (
+                (top, (top[0] - 3 * d, top[1])),
+                (top, (top[0] + 3 * d, bottom[1])),
+                (top, (top[0] - 3 * d, top[1] + 3)),
+                (top, (top[0] + 3 * d, top[1] + 3)),
+                (top, (top[0] - 3 * d, top[1] - 3)),
+                (top, (top[0] + 3 * d, top[1] - 3)),
+                (top, (top[0], top[1] + 3)),
+                (bottom, (bottom[0] + 3 * d, bottom[1])),
+                (bottom, (bottom[0] - 3 * d, bottom[1])),
+                (bottom, (bottom[0] + 3 * d, bottom[1] - 3)),
+                (bottom, (bottom[0] - 3 * d, bottom[1] - 3)),
+                (bottom, (bottom[0] + 3 * d, bottom[1] + 3)),
+                (bottom, (bottom[0] - 3 * d, bottom[1] + 3)),
+                (bottom, (bottom[0], bottom[1] - 3)),
+            )
+            for top, bottom in axis
+        )
 
-        for x in axis:
-            top, bottom = x
-            # vertical
-            coords.append(((top), (top[0] - 3 * direction, top[1])))
-            coords.append(((top), (top[0] + 3 * direction, bottom[1])))
-            coords.append(((bottom), (bottom[0] + 3 * direction, bottom[1])))
-            coords.append(((bottom), (bottom[0] - 3 * direction, bottom[1])))
-
-            # diagonally left
-            coords.append(((top), (top[0] - 3 * direction, top[1] + 3)))
-            coords.append(((top), (top[0] + 3 * direction, top[1] + 3)))
-            coords.append(((bottom), (bottom[0] + 3 * direction, bottom[1] - 3)))
-            coords.append(((bottom), (bottom[0] - 3 * direction, bottom[1] - 3)))
-
-            # diagonally right
-            coords.append(((top), (top[0] - 3 * direction, top[1] - 3)))
-            coords.append(((top), (top[0] + 3 * direction, top[1] - 3)))
-            coords.append(((bottom), (bottom[0] + 3 * direction, bottom[1] + 3)))
-            coords.append(((bottom), (bottom[0] - 3 * direction, bottom[1] + 3)))
-
-            # horizontal
-            coords.append(((top), (top[0], top[1] + 3)))
-            coords.append(((bottom), (bottom[0], bottom[1] - 3)))
-
-        validate = set(filter(lambda c: self._validate_coordinate(*c[1]), coords))
-        cannons = (self._is_cannon(*x[1], player) for x in validate)
-
-        return list(compress(validate, cannons))
+        valid = set(filter(lambda c: self._validate_coordinate(*c[1]), all_moves))
+        return list(compress(valid, (self._is_cannon(*p[1], player) for p in valid)))
 
     def _swap(self, startX: int, startY: int, endX: int, endY: int, sid: str) -> None:
         player: Player = self._get_player(sid)
