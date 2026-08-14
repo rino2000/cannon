@@ -321,8 +321,8 @@ class Room:
     def _is_cannon_axis(self, startX: int, startY: int, sid: str) -> bool:
         player: Player = self._get_player(sid)
         all_cannons = self._get_all_cannons(startX, startY, player)
-        axis = self._get_cannon_gun_axis(all_cannons, player)
-        return (startX, startY) == axis
+        axis: list[Coord] = self._get_cannon_gun_axis(all_cannons, player)
+        return any(((startX, startY) == axis) for axis in axis)
 
     def _check_capture_town(self, x: int, y: int, player: Player) -> list[Coord]:
         xs = [x] * 2 + [x + player.direction] * 3
@@ -418,8 +418,9 @@ class Room:
 
     def _get_cannon_gun_axis(
         self, coords: list[tuple[Coord, Coord]], player: Player
-    ) -> Coord:
-        return (min if player == Player.WHITE else max)(chain(*coords))
+    ) -> list[Coord]:
+        """Return List of all cannon gun axis available"""
+        return [(min if player == Player.WHITE else max)(coord) for coord in coords]
 
     def _get_cannon_axis(self, coords: list[tuple[Coord, Coord]]):
         return [(min(x), max(x)) for x in coords]

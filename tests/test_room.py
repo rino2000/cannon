@@ -1094,3 +1094,33 @@ class TestRoom:
         assert room._turn == Player.WHITE
         assert room.black_captured == 0
         assert room.white_captured == 0
+
+    def test_cannon_shoot_white_center_cannon(self, two_clients: Clients):
+        self.test_first_move_black(two_clients)
+        room: Room = rooms[self._room_name]
+        white_client, _, _, _ = get_white_black_clients(two_clients, room)
+        white_client.get_received()
+        room.board = [
+            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
+        ]
+
+        startX, startY, endX, endY = 4, 2, 9, 7
+        white_client.emit("move_object", startX, startY, endX, endY, room.name)
+
+        recv = white_client.get_received()
+
+        assert recv[0]["args"][0]["message"] == "Game Over"
+        assert room.board[startX][startY] == EMPTY
+        assert room.board[endX][endY] == Town.BLACK
+        assert room._turn == Player.WHITE
+        assert room.black_captured == 0
+        assert room.white_captured == 0
