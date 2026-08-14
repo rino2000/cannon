@@ -244,6 +244,17 @@ class Room:
             broadcast=True,
         )
 
+    def _soldier_not_allowed_moves(self, x: int, y: int, player: Player) -> list[Coord]:
+        direction: int = player.direction
+        coords = [
+            (x, y - 1),
+            (x, y + 1),
+            (x - 1 * direction, y),
+            (x - 1 * direction, y - 1),
+            (x - 1 * direction, y + 1),
+        ]
+        return filterfalse(lambda c: self._validate_coordinate(*c) == False, coords)
+
     def move_object(
         self, startX: int, startY: int, endX: int, endY: int, sid: str
     ) -> None:
@@ -257,9 +268,7 @@ class Room:
             self._validate_coordinate(startX, startY)
             or self._validate_coordinate(endX, endY)
         ):
-            return emit(
-                "info", {"message": f"Not valide {startX, startY} {endX, endY}"}, to=sid
-            )
+            return emit("info", {"message": "Move Coord nicht valide"}, to=sid)
 
         player: Player = self._get_player(sid)
 
@@ -290,11 +299,6 @@ class Room:
             emit("info", {"capture": f"Capture: {capture}"}, to=sid)
             return emit("info", {"turn": f"Turn: {self._turn.name}"}, broadcast=True)
 
-        if (startX - endX) == (1 if player == Player.WHITE else -1):
-            return emit(
-                "info", {"message": "du darf nicht 1 schritt nachhinten"}, to=sid
-            )
-
         if self._is_cannon(startX, startY, player) and self._is_cannon_axis(
             startX, startY, sid
         ):
@@ -308,8 +312,8 @@ class Room:
             else:
                 return self.move_cannon(startX, startY, endX, endY, sid)
 
-        if abs(endY - startY) > 1 or abs(endX - startX) > 1:
-            return emit("info", {"message": "soldat darf nur 1 schritt machen"}, to=sid)
+        if (endX, endY) in self._soldier_not_allowed_moves(startX, startY, player):
+            return emit("info", {"message": "Soldier cant move there"}, to=sid)
 
         self._swap(startX, startY, endX, endY, sid)
         return emit("info", {"turn": f"Turn: {self._turn.name}"}, broadcast=True)
@@ -360,7 +364,7 @@ class Room:
         offsets = [((-1, 0), (-2, 0)), ((-1, 1), (-2, 2)), ((-1, -1), (-2, -2))]
 
         interceptions = list(Soldier) + list(Town)
-        valid_pairs = [
+        valid = [
             (first, second)
             for (dx1, dy1), (dx2, dy2) in offsets
             for first, second in [
@@ -376,9 +380,7 @@ class Room:
         ]
 
         # Return the max or min of each pair depending on player
-        return [
-            max(pair) if player == Player.BLACK else min(pair) for pair in valid_pairs
-        ]
+        return [max(pair) if player == Player.BLACK else min(pair) for pair in valid]
 
     def _get_all_cannons(self, x: int, y: int, player: Player):
         soldier = player.soldier.value

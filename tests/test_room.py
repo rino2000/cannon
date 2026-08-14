@@ -205,9 +205,7 @@ class TestRoom:
         black_client.emit("move_object", startX, startY, endX, endY, room.name)
         recv = black_client.get_received()
 
-        assert (
-            recv[0]["args"][0]["message"] == f"Not valide {startX, startY} {endX, endY}"
-        )
+        assert recv[0]["args"][0]["message"] == "Move Coord nicht valide"
 
     def test_white_move_coords_invalide(self, two_clients: Clients) -> None:
         self.test_first_move_black(two_clients)
@@ -220,9 +218,7 @@ class TestRoom:
         white_client.emit("move_object", startX, startY, endX, endY, room.name)
         recv = white_client.get_received()
 
-        assert (
-            recv[0]["args"][0]["message"] == f"Not valide {startX, startY} {endX, endY}"
-        )
+        assert recv[0]["args"][0]["message"] == "Move Coord nicht valide"
 
     def test_first_move_black(self, two_clients: Clients) -> None:
         self.test_first_white_move(two_clients)
@@ -360,7 +356,7 @@ class TestRoom:
 
         recv = black_client.get_received()
 
-        assert recv[0]["args"][0]["message"] == "du darf nicht 1 schritt nachhinten"
+        assert recv[0]["args"][0]["message"] == "Soldier cant move there"
         assert room._turn == Player.BLACK
 
     def test_soldier_white_cant_move_back(self, two_clients: Clients) -> None:
@@ -386,7 +382,7 @@ class TestRoom:
 
         recv = white_client.get_received()
 
-        assert recv[0]["args"][0]["message"] == "du darf nicht 1 schritt nachhinten"
+        assert recv[0]["args"][0]["message"] == "Soldier cant move there"
         assert room.board[startX][startY] == Soldier.WHITE
         assert room.board[endX][endY] == EMPTY
         assert room._turn == Player.WHITE
@@ -1036,5 +1032,65 @@ class TestRoom:
         assert room.board[startX][startY] == Soldier.BLACK
         assert room.board[endX][endY] == Soldier.BLACK
         assert room._turn == Player.BLACK
+        assert room.black_captured == 0
+        assert room.white_captured == 0
+
+    def test_soldier_move_side_black(self, two_clients: Clients):
+        self.test_first_white_move(two_clients)
+        room: Room = rooms[self._room_name]
+        _, _, black_client, _ = get_white_black_clients(two_clients, room)
+        black_client.get_received()
+        room.board = [
+            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 2, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
+        ]
+
+        startX, startY, endX, endY = 7, 2, 7, 1
+        black_client.emit("move_object", startX, startY, endX, endY, room.name)
+
+        recv = black_client.get_received()
+
+        assert recv[0]["args"][0]["message"] == "Soldier cant move there"
+        assert room.board[startX][startY] == Soldier.BLACK
+        assert room.board[endX][endY] == EMPTY
+        assert room._turn == Player.BLACK
+        assert room.black_captured == 0
+        assert room.white_captured == 0
+
+    def test_soldier_move_side_white(self, two_clients: Clients):
+        self.test_first_move_black(two_clients)
+        room: Room = rooms[self._room_name]
+        white_client, _, _, _ = get_white_black_clients(two_clients, room)
+        white_client.get_received()
+        room.board = [
+            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
+        ]
+
+        startX, startY, endX, endY = 2, 2, 1, 1
+        white_client.emit("move_object", startX, startY, endX, endY, room.name)
+
+        recv = white_client.get_received()
+
+        assert recv[0]["args"][0]["message"] == "Soldier cant move there"
+        assert room.board[startX][startY] == Soldier.WHITE
+        assert room.board[endX][endY] == EMPTY
+        assert room._turn == Player.WHITE
         assert room.black_captured == 0
         assert room.white_captured == 0
