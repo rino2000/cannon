@@ -237,10 +237,10 @@ class Room:
             {
                 "message": "Game Over",
                 "turn": "",
-                "gameState": self.gameState,
+                "gameState": self.gameState.name,
                 "winner": f"Winner: {player.name}",
             },
-            to=sid,
+            # to=sid,
             broadcast=True,
         )
 
@@ -259,7 +259,7 @@ class Room:
         self, startX: int, startY: int, endX: int, endY: int, sid: str
     ) -> None:
         if self.gameState == GameState.GAME_OVER:
-            return emit("info", {"message": "Game Over"}, to=sid)
+            return emit("info", {"message": "Game Over"}, to=sid, broadcast=True)
 
         if self.gameState != GameState.MOVE_SOLDATEN:
             return emit("info", {"message": "Nicht in move soldaten gamestate"}, to=sid)
@@ -289,6 +289,7 @@ class Room:
             endY,
         ) in self._check_interception_thread_move(startX, startY, player):
             emit("info", {"message": f"thread move {endX, endY} moved"}, to=sid)
+            emit("info", {"turn": f"Turn: {self._turn.name}"}, broadcast=True)
             return self._swap(startX, startY, endX, endY, sid)
 
         if (endX, endY) in self._check_capture_town(startX, startY, player):
@@ -448,6 +449,7 @@ class Room:
         self.switch_turn(player)
         with self._lock:
             self.board[endX][endY] = EMPTY
+        emit("info", {"turn": f"Turn: {self._turn.name}"}, to=sid, broadcast=True)
         return emit("info", {"message": f"cannon shoot capture {endX, endY}"}, to=sid)
 
     def _check_all_possbible_cannon_moves(self, cannons, player: Player):
@@ -505,6 +507,7 @@ class Room:
                 "info", {"message": f"Move {coord} nicht moglich zu moven"}, to=sid
             )
 
+        emit("info", {"turn": f"Turn: {self._turn.name}"}, to=sid, broadcast=True)
         return self._swap(startX, startY, endX, endY, sid)
 
     def surrender(self, player: Player) -> Player:
@@ -570,6 +573,7 @@ def handle_surrender(player: int, room: str):
     emit(
         "info",
         {"message": "Game Over", "winner": f"Winner {winner.name}"},
+        to=sid,
         broadcast=True,
     )
     lock = Lock()

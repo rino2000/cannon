@@ -412,7 +412,8 @@ class TestRoom:
 
         recv = black_client.get_received()
 
-        assert recv[0]["args"][0]["message"] == f"cannon shoot capture {(endX, endY)}"
+        assert recv[1]["args"][0]["message"] == f"cannon shoot capture {endX, endY}"
+        assert recv[0]["args"][0]["turn"] == f"Turn: {room._turn.name}"
         assert room._turn == Player.WHITE
         assert room.board[startX][startY] == Soldier.BLACK
         assert room.board[endX][endY] == EMPTY
@@ -476,7 +477,8 @@ class TestRoom:
 
         recv = black_client.get_received()
 
-        assert recv[0]["args"][0]["message"] == f"cannon shoot capture {(endX, endY)}"
+        assert recv[1]["args"][0]["message"] == f"cannon shoot capture {endX, endY}"
+        assert recv[0]["args"][0]["turn"] == f"Turn: {room._turn.name}"
         assert room._turn == Player.WHITE
         assert room.board[startX][startY] == Soldier.BLACK
         assert room.board[endX][endY] == EMPTY
@@ -508,7 +510,8 @@ class TestRoom:
 
         recv = black_client.get_received()
 
-        assert recv[0]["args"][0]["message"] == f"cannon shoot capture {(endX, endY)}"
+        assert recv[1]["args"][0]["message"] == f"cannon shoot capture {endX, endY}"
+        assert recv[0]["args"][0]["turn"] == f"Turn: {room._turn.name}"
         assert room._turn == Player.WHITE
         assert room.board[startX][startY] == Soldier.BLACK
         assert room.board[endX][endY] == EMPTY
@@ -602,7 +605,8 @@ class TestRoom:
 
         recv = black_client.get_received()
 
-        assert recv[0]["args"][0]["message"] == f"cannon shoot capture {endX, endY}"
+        assert recv[1]["args"][0]["message"] == f"cannon shoot capture {endX, endY}"
+        assert recv[0]["args"][0]["turn"] == f"Turn: {room._turn.name}"
         assert room.board[startX][startY] == Soldier.BLACK
         assert room.board[endX][endY] == EMPTY
         assert room._turn == Player.WHITE
@@ -699,7 +703,8 @@ class TestRoom:
 
         recv = white_client.get_received()
 
-        assert recv[0]["args"][0]["message"] == f"cannon shoot capture {endX, endY}"
+        assert recv[1]["args"][0]["message"] == f"cannon shoot capture {endX, endY}"
+        assert recv[0]["args"][0]["turn"] == f"Turn: {room._turn.name}"
         assert room.board[startX][startY] == Soldier.WHITE
         assert room.board[endX][endY] == EMPTY
         assert room.black_captured == 0
@@ -761,7 +766,8 @@ class TestRoom:
 
         recv = white_client.get_received()
 
-        assert recv[0]["args"][0]["message"] == f"cannon shoot capture {endX, endY}"
+        assert recv[1]["args"][0]["message"] == f"cannon shoot capture {endX, endY}"
+        assert recv[0]["args"][0]["turn"] == f"Turn: {room._turn.name}"
         assert room.board[startX][startY] == Soldier.WHITE
         assert room.board[endX][endY] == EMPTY
         assert room.black_captured == 0
@@ -1124,3 +1130,34 @@ class TestRoom:
         assert room._turn == Player.WHITE
         assert room.black_captured == 0
         assert room.white_captured == 0
+
+    def test_game_over_message_in_both_players(self, two_clients: Clients):
+        self.test_first_white_move(two_clients)
+        room: Room = rooms[self._room_name]
+        white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
+        white_client.get_received()
+        black_client.get_received()
+        room.board = [
+            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
+            [0, 0, 0, 2, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
+        ]
+
+        startX, startY, endX, endY = 1, 3, 0, 4
+        black_client.emit("move_object", startX, startY, endX, endY, room.name)
+
+        white_recv = white_client.get_received()
+        black_recv = black_client.get_received()
+
+        assert black_recv[0]["args"][0]["message"] == "Game Over"
+        assert black_recv[0]["args"][0]["winner"] == f"Winner: {Player.BLACK.name}"
+
+        assert white_recv[0]["args"][0]["message"] == "Game Over"
+        assert white_recv[0]["args"][0]["winner"] == f"Winner: {Player.BLACK.name}"

@@ -189,13 +189,11 @@
         }
 
         if (data.capture) {
-          captureCounter = data.capture;
-          captureCounterEl.innerText = `Capture: ${data.capture}`;
+          captureCounterEl.innerText = data.capture;
         }
 
         if (data.turn) {
-          turn = data.turn;
-          turnEl.innerText = "Turn: " + (data.turn === 1 ? "White" : "Black");
+          turnEl.innerText = data.turn;
         }
 
         if (data.message) {
@@ -220,7 +218,7 @@
         }
 
         if (data.turn) {
-          turnEl.innerText = turn;
+          turnEl.innerText = data.turn;
         }
 
         if (data.winner) {
