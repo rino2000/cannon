@@ -240,7 +240,6 @@ class Room:
                 "gameState": self.gameState.name,
                 "winner": f"Winner: {player.name}",
             },
-            # to=sid,
             broadcast=True,
         )
 
@@ -507,8 +506,10 @@ class Room:
                 "info", {"message": f"Move {coord} nicht moglich zu moven"}, to=sid
             )
 
-        emit("info", {"turn": f"Turn: {self._turn.name}"}, to=sid, broadcast=True)
-        return self._swap(startX, startY, endX, endY, sid)
+        self._swap(startX, startY, endX, endY, sid)
+        return emit(
+            "info", {"turn": f"Turn: {self._turn.name}"}, to=sid, broadcast=True
+        )
 
     def surrender(self, player: Player) -> Player:
         self.gameState = GameState.GAME_OVER

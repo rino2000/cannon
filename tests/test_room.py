@@ -1161,3 +1161,86 @@ class TestRoom:
 
         assert white_recv[0]["args"][0]["message"] == "Game Over"
         assert white_recv[0]["args"][0]["winner"] == f"Winner: {Player.BLACK.name}"
+
+    @pytest.mark.parametrize(
+        "startX,startY,endX,endY,excepted",
+        [
+            (6, 4, 7, 3, "Soldier cant move there"),
+            (6, 4, 7, 4, "Soldier cant move there"),
+            (6, 4, 7, 5, "Soldier cant move there"),
+        ],
+    )
+    def test_black_soldier_moves_not_allowed(
+        self,
+        startX: int,
+        startY: int,
+        endX: int,
+        endY: int,
+        excepted: str,
+        two_clients: Clients,
+    ):
+        room: Room = rooms[self._room_name]
+        room.gameState = GameState.MOVE_SOLDATEN
+        room._turn = Player.BLACK
+        _, _, black_client, _ = get_white_black_clients(two_clients, room)
+        black_client.get_received()
+        room.board = [
+            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+            [0, 0, 0, 1, 2, 1, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
+        ]
+
+        black_client.emit("move_object", startX, startY, endX, endY, room.name)
+
+        recv = black_client.get_received()
+        assert recv[0]["args"][0]["message"] == excepted
+
+    @pytest.mark.parametrize(
+        "startX,startY,endX,endY,excepted",
+        [
+            (6, 5, 3, 5, f"Turn: {Player.WHITE.name}"),
+            (4, 5, 7, 5, f"Turn: {Player.WHITE.name}"),
+            (4, 3, 7, 6, f"Turn: {Player.WHITE.name}"),
+            (6, 5, 3, 2, f"Turn: {Player.WHITE.name}"),
+            (5, 3, 5, 6, f"Turn: {Player.WHITE.name}"),
+            (5, 5, 5, 2, f"Turn: {Player.WHITE.name}"),
+        ],
+    )
+    def test_all_cannon_moves_black(
+        self,
+        startX: int,
+        startY: int,
+        endX: int,
+        endY: int,
+        excepted: str,
+        two_clients: Clients,
+    ):
+        room: Room = rooms[self._room_name]
+        room.gameState = GameState.MOVE_SOLDATEN
+        room._turn = Player.BLACK
+        _, _, black_client, _ = get_white_black_clients(two_clients, room)
+        black_client.get_received()
+        room.board = [
+            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 2, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 2, 2, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
+        ]
+
+        black_client.emit("move_object", startX, startY, endX, endY, room.name)
+
+        recv = black_client.get_received()
+        assert recv[0]["args"][0]["turn"] == excepted
