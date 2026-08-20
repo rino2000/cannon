@@ -1,5 +1,3 @@
-from pprint import pprint
-
 import pytest
 from flask_socketio import SocketIOTestClient
 
@@ -41,7 +39,7 @@ def two_clients() -> Clients:
 
 
 @pytest.fixture(autouse=True)
-def clear_rooms() -> None:
+def clear_rooms():
     rooms.clear()
 
 
@@ -57,7 +55,7 @@ def get_white_black_clients(two_clients: Clients, room: Room) -> WhiteBlackClien
 class TestRoom:
     _room_name = "a"
 
-    def test_two_clients_join_same_room(self, two_clients: Clients) -> None:
+    def test_two_clients_join_same_room(self, two_clients: Clients):
         (_, sid1), (_, sid2) = two_clients
         assert self._room_name in rooms
         room: Room = rooms[self._room_name]
@@ -85,7 +83,7 @@ class TestRoom:
         assert any("white muss zuerst alles placen" in str(ev) for ev in info_events)
         assert room.board[6][0] == 0
 
-    def test_white_place_all(self, two_clients: Clients) -> None:
+    def test_white_place_all(self, two_clients: Clients):
         room: Room = rooms[self._room_name]
         white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
 
@@ -107,7 +105,7 @@ class TestRoom:
             if msg["name"] == "info"
         )
 
-    def test_black_place_all(self, two_clients: Clients) -> None:
+    def test_black_place_all(self, two_clients: Clients):
         self.test_white_place_all(two_clients)
 
         room: Room = rooms[self._room_name]
@@ -123,22 +121,22 @@ class TestRoom:
         black_client.get_received()
         assert room.board[9][7] == Town.BLACK
 
-    def test_gamestate(self, two_clients: Clients) -> None:
+    def test_gamestate(self, two_clients: Clients):
         self.test_black_place_all(two_clients)
         room: Room = rooms[self._room_name]
         assert room.gameState == GameState.MOVE_SOLDATEN
 
-    def test_all_objects_placed(self, two_clients: Clients) -> None:
+    def test_all_objects_placed(self, two_clients: Clients):
         self.test_black_place_all(two_clients)
         room: Room = rooms[self._room_name]
         assert room._all_objects_placed()
 
-    def test_turn_white(self, two_clients: Clients) -> None:
+    def test_first_turn_is_white(self, two_clients: Clients):
         self.test_black_place_all(two_clients)
         room: Room = rooms[self._room_name]
         assert room._turn == Player.WHITE
 
-    def test_black_move_first_not_allowed(self, two_clients: Clients) -> None:
+    def test_black_move_first_not_allowed(self, two_clients: Clients):
         self.test_black_place_all(two_clients)
         room: Room = rooms[self._room_name]
         _, _, black_client, _ = get_white_black_clients(two_clients, room)
@@ -152,79 +150,24 @@ class TestRoom:
         assert room.board[startX][startY] == Soldier.BLACK
         assert room.board[endX][endY] == EMPTY
 
-    def test_white_move_tower_not_allowed(self, two_clients: Clients) -> None:
+    def test_first_white_move(self, two_clients: Clients):
         self.test_black_place_all(two_clients)
         room: Room = rooms[self._room_name]
         white_client, _, _, _ = get_white_black_clients(two_clients, room)
         white_client.get_received()
 
-        startX, startY, endX, endY = 0, 4, 0, 5
-        white_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = white_client.get_received()
-
-        assert recv[0]["args"][0]["message"] == "Städte nicht bewegen"
-        assert room.board[startX][startY] == Town.WHITE
-        assert room.board[endX][endY] == EMPTY
-
-    def test_first_white_move(self, two_clients: Clients) -> None:
-        self.test_all_objects_placed(two_clients)
-        room: Room = rooms[self._room_name]
-        white_client, _, _, _ = get_white_black_clients(two_clients, room)
-
         startX, startY, endX, endY = 3, 1, 4, 1
-        white_client.get_received()
         white_client.emit("move_object", startX, startY, endX, endY, room.name)
 
         assert room.board[startX][startY] == EMPTY
         assert room.board[endX][endY] == Soldier.WHITE
+        assert room._turn == Player.BLACK
 
-    def test_black_move_town_not_allowed(self, two_clients: Clients) -> None:
+    def test_first_move_black(self, two_clients: Clients):
         self.test_first_white_move(two_clients)
         room: Room = rooms[self._room_name]
         _, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 9, 7, 9, 8
-
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
-        recv = black_client.get_received()
-
-        assert recv[0]["args"][0]["message"] == "Städte nicht bewegen"
-        assert room.board[startX][startY] == Town.BLACK
-        assert room.board[endX][endY] == EMPTY
-
-    def test_black_move_coords_invalide(self, two_clients: Clients) -> None:
-        self.test_first_white_move(two_clients)
-        room: Room = rooms[self._room_name]
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 11, 23, 203, 20
-
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
-        recv = black_client.get_received()
-
-        assert recv[0]["args"][0]["message"] == "Move Coord nicht valide"
-
-    def test_white_move_coords_invalide(self, two_clients: Clients) -> None:
-        self.test_first_move_black(two_clients)
-        room: Room = rooms[self._room_name]
-        white_client, _, _, _ = get_white_black_clients(two_clients, room)
-        white_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = -23, 100, 13, -13
-
-        white_client.emit("move_object", startX, startY, endX, endY, room.name)
-        recv = white_client.get_received()
-
-        assert recv[0]["args"][0]["message"] == "Move Coord nicht valide"
-
-    def test_first_move_black(self, two_clients: Clients) -> None:
-        self.test_first_white_move(two_clients)
-        room: Room = rooms[self._room_name]
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
+        black_client.get_received()
 
         startX, startY, endX, endY = 6, 0, 5, 0
 
@@ -232,581 +175,139 @@ class TestRoom:
 
         assert room.board[startX][startY] == EMPTY
         assert room.board[endX][endY] == Soldier.BLACK
+        assert room._turn == Player.WHITE
 
-    def test_capture_soldier_black(self, two_clients: Clients) -> None:
-        self.test_first_move_black(two_clients)
+    @pytest.mark.parametrize(
+        "startX,startY,endX,endY,player",
+        [
+            (8, 3, 8, 4, Player.BLACK),
+            (2, 5, 4, 4, Player.WHITE),
+        ],
+    )
+    def test_cannon_move_not_allowed(
+        self,
+        startX: int,
+        startY: int,
+        endX: int,
+        endY: int,
+        player: Player,
+        two_clients: Clients,
+    ):
         room: Room = rooms[self._room_name]
-        white_client, _, _, _ = get_white_black_clients(two_clients, room)
-        white_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 4, 1, 5, 0
-
-        white_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        assert room.white_captured == 1
-        assert room.black_captured == 0
-        assert room.board[startX][startY] == EMPTY
-        assert room.board[endX][endY] == Soldier.WHITE
-        assert room._turn == Player.BLACK
-
-    def test_capture_soldier_white(self, two_clients: Clients) -> None:
-        self.test_capture_soldier_black(two_clients)
-        room: Room = rooms[self._room_name]
+        room._turn = player
+        room.gameState = GameState.MOVE_SOLDATEN
         white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
-        white_client.get_received()  # clear all messages in list
+        white_client.get_received()
+        black_client.get_received()
 
-        startX, startY, endX, endY = 7, 0, 6, 0
+        room.board = [
+            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0, 1, 1, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 2, 0, 2, 0, 0, 0, 0, 0, 0],
+            [0, 2, 2, 2, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 2, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
+        ]
 
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
-        white_client.emit("move_object", 2, 1, 3, 1, room.name)
-        black_client.emit("move_object", endX, endY, endX - 1, endY, room.name)
+        client = white_client if player == Player.WHITE else black_client
+        client.emit("move_object", startX, startY, endX, endY, room.name)
 
-        assert room.white_captured == 1
-        assert room.black_captured == 1
-        assert room.board[startX][startY] == EMPTY
-        assert room.board[endX - 1][endY] == Soldier.BLACK
-        assert room._turn == Player.WHITE
-
-    def test_first_cannon_move_white(self, two_clients: Clients) -> None:
-        self.test_black_place_all(two_clients)
-        room: Room = rooms[self._room_name]
-        white_client, _, _, _ = get_white_black_clients(two_clients, room)
-        white_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 1, 1, 4, 1
-        white_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        assert room.board[startX][startY] == EMPTY
-        assert room.board[endX][endY] == Soldier.WHITE
-        assert room._turn == Player.BLACK
-
-    def test_cannon_move_white_not_allowed(self, two_clients: Clients) -> None:
-        self.test_black_place_all(two_clients)
-        room: Room = rooms[self._room_name]
-        white_client, _, _, _ = get_white_black_clients(two_clients, room)
-        white_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 1, 1, 4, 4
-        white_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = white_client.get_received()
-        assert (
-            recv[0]["args"][0]["message"]
-            == f"Move (({startX}, {startY}), ({endX}, {endY})) nicht moglich zu moven"
-        )
-        assert room.board[startX][startY] == Soldier.WHITE
-        assert room.board[endX][endY] == EMPTY
-        assert room._turn == Player.WHITE
-
-    def test_first_cannon_move_black(self, two_clients: Clients) -> None:
-        self.test_first_white_move(two_clients)
-        room: Room = rooms[self._room_name]
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 8, 2, 5, 2
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        assert room.board[startX][startY] == EMPTY
-        assert room.board[endX][endY] == Soldier.BLACK
-        assert room._turn == Player.WHITE
-
-    def test_cannon_move_black_not_allowed(self, two_clients: Clients) -> None:
-        self.test_first_white_move(two_clients)
-        room: Room = rooms[self._room_name]
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 8, 0, 5, 3
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = black_client.get_received()
+        recv = client.get_received()
 
         assert (
             recv[0]["args"][0]["message"]
             == f"Move (({startX}, {startY}), ({endX}, {endY})) nicht moglich zu moven"
         )
-        assert room.board[startX][startY] == Soldier.BLACK
+        assert (
+            room.board[startX][startY] == Soldier.WHITE
+            if player == Player.WHITE
+            else Soldier.BLACK
+        )
         assert room.board[endX][endY] == EMPTY
-        assert room._turn == Player.BLACK
+        assert room._turn == player
 
-    def test_soldier_black_cant_move_back(self, two_clients: Clients) -> None:
-        self.test_cannon_move_black_not_allowed(two_clients)
-        room: Room = rooms[self._room_name]
-        room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Player.BLACK
-        room.board = [
-            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 6, 1, 7, 1
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = black_client.get_received()
-
-        assert recv[0]["args"][0]["message"] == "Soldier cant move there"
-        assert room._turn == Player.BLACK
-
-    def test_soldier_white_cant_move_back(self, two_clients: Clients) -> None:
+    @pytest.mark.parametrize(
+        "startX,startY,endX,endY,player",
+        [(0, 4, 0, 5, Player.WHITE), (9, 7, 9, 8, Player.BLACK)],
+    )
+    def test_move_tower_fail(
+        self,
+        startX: int,
+        startY: int,
+        endX: int,
+        endY: int,
+        player: str,
+        two_clients: Clients,
+    ):
         self.test_black_place_all(two_clients)
         room: Room = rooms[self._room_name]
-        room.board = [
-            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-        white_client, _, _, _ = get_white_black_clients(two_clients, room)
-        white_client.get_received()  # clear all messages in list
+        room._turn = player
+        white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
+        white_client.get_received()
+        black_client.get_received()
 
-        startX, startY, endX, endY = 2, 1, 1, 1
-        white_client.emit("move_object", startX, startY, endX, endY, room.name)
+        client = white_client if player == Player.WHITE else black_client
+        client.emit("move_object", startX, startY, endX, endY, room.name)
 
-        recv = white_client.get_received()
+        recv = client.get_received()
 
-        assert recv[0]["args"][0]["message"] == "Soldier cant move there"
-        assert room.board[startX][startY] == Soldier.WHITE
-        assert room.board[endX][endY] == EMPTY
-        assert room._turn == Player.WHITE
-
-    def test_cannon_shoot_black_front(self, two_clients: Clients) -> None:
-        self.test_cannon_move_black_not_allowed(two_clients)
-        room: Room = rooms[self._room_name]
-        room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Player.BLACK
-        room.board = [
-            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 2, 0, 0, 0, 0, 0, 0],
-            [0, 2, 2, 2, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 8, 1, 3, 1
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = black_client.get_received()
-
-        assert recv[1]["args"][0]["message"] == f"cannon shoot capture {endX, endY}"
-        assert recv[0]["args"][0]["turn"] == f"Turn: {room._turn.name}"
-        assert room._turn == Player.WHITE
-        assert room.board[startX][startY] == Soldier.BLACK
-        assert room.board[endX][endY] == EMPTY
-        assert room.black_captured == 1
-        assert room.white_captured == 0
-
-    def test_cannon_shoot_black_empty_field(self, two_clients: Clients):
-        self.test_cannon_move_black_not_allowed(two_clients)
-        room: Room = rooms[self._room_name]
-        room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Player.BLACK
-        room.board = [
-            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 2, 0, 0, 0, 0, 0, 0],
-            [0, 2, 2, 2, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 8, 1, 3, 1
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = black_client.get_received()
-
-        assert recv[0]["args"][0]["message"] == "target is invalide"
-        assert room.board[startX][startY] == Soldier.BLACK
-        assert room.board[endX][endY] == EMPTY
-        assert room._turn == Player.BLACK
-        assert room.black_captured == 0
-        assert room.white_captured == 0
-
-    def test_cannon_shoot_black_side(self, two_clients: Clients):
-        self.test_cannon_move_black_not_allowed(two_clients)
-        room: Room = rooms[self._room_name]
-        room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Player.BLACK
-        room.board = [
-            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 2, 0, 0, 0, 0, 0, 0],
-            [0, 2, 2, 2, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 8, 1, 4, 5
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = black_client.get_received()
-
-        assert recv[1]["args"][0]["message"] == f"cannon shoot capture {endX, endY}"
-        assert recv[0]["args"][0]["turn"] == f"Turn: {room._turn.name}"
-        assert room._turn == Player.WHITE
-        assert room.board[startX][startY] == Soldier.BLACK
-        assert room.board[endX][endY] == EMPTY
-        assert room.black_captured == 1
-        assert room.white_captured == 0
-
-    def test_cannon_shoot_black_side_plus(self, two_clients: Clients):
-        self.test_cannon_move_black_not_allowed(two_clients)
-        room: Room = rooms[self._room_name]
-        room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Player.BLACK
-        room.board = [
-            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 2, 0, 0, 0, 0, 0, 0],
-            [0, 2, 2, 2, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 8, 1, 3, 6
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = black_client.get_received()
-
-        assert recv[1]["args"][0]["message"] == f"cannon shoot capture {endX, endY}"
-        assert recv[0]["args"][0]["turn"] == f"Turn: {room._turn.name}"
-        assert room._turn == Player.WHITE
-        assert room.board[startX][startY] == Soldier.BLACK
-        assert room.board[endX][endY] == EMPTY
-        assert room.black_captured == 1
-        assert room.white_captured == 0
-
-    def test_cannon_shoot_black_front_fail(self, two_clients: Clients):
-        self.test_cannon_move_black_not_allowed(two_clients)
-        room: Room = rooms[self._room_name]
-        room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Player.BLACK
-        room.board = [
-            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 2, 0, 0, 0, 0, 0, 0],
-            [0, 2, 2, 2, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 8, 1, 5, 1
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = black_client.get_received()
-
-        assert recv[0]["args"][0]["message"] == "cannon shoot intercepted"
-        assert room.board[startX][startY] == Soldier.BLACK
-        assert room.board[endX][endY] == Soldier.WHITE
-        assert room.black_captured == 0
-        assert room.white_captured == 0
-
-    def test_cannon_shoot_black_diagonaly_fail(self, two_clients: Clients):
-        self.test_cannon_move_black_not_allowed(two_clients)
-        room: Room = rooms[self._room_name]
-        room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Player.BLACK
-        room.board = [
-            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-            [0, 2, 0, 2, 0, 0, 0, 0, 0, 0],
-            [0, 2, 2, 2, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 8, 1, 3, 6
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = black_client.get_received()
-
-        assert recv[0]["args"][0]["message"] == "cannon shoot intercepted"
-        assert room.board[startX][startY] == Soldier.BLACK
-        assert room.board[endX][endY] == Soldier.WHITE
-        assert room.black_captured == 0
-        assert room.white_captured == 0
-
-    def test_cannon_shoot_black_diagonaly_back_soldier(self, two_clients: Clients):
-        self.test_cannon_move_black_not_allowed(two_clients)
-        room: Room = rooms[self._room_name]
-        room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Player.BLACK
-        room.board = [
-            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-            [0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 2, 0, 0, 0, 0, 0, 0],
-            [0, 2, 2, 2, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 8, 1, 3, 6
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = black_client.get_received()
-
-        assert recv[1]["args"][0]["message"] == f"cannon shoot capture {endX, endY}"
-        assert recv[0]["args"][0]["turn"] == f"Turn: {room._turn.name}"
-        assert room.board[startX][startY] == Soldier.BLACK
-        assert room.board[endX][endY] == EMPTY
-        assert room._turn == Player.WHITE
-        assert room.black_captured == 1
-        assert room.white_captured == 0
-
-    def test_cannon_shoot_black_empty_field_error(self, two_clients: Clients):
-        self.test_cannon_move_black_not_allowed(two_clients)
-        room: Room = rooms[self._room_name]
-        room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Player.BLACK
-        room.board = [
-            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 8, 1, 3, 1
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = black_client.get_received()
-
-        assert recv[0]["args"][0]["message"] == "target is invalide"
-        assert room.board[startX][startY] == Soldier.BLACK
-        assert room.board[endX][endY] == EMPTY
-        assert room.black_captured == 0
-        assert room.white_captured == 0
-
-    def test_cannon_shoot_black_moving_range_error(self, two_clients: Clients):
-        self.test_cannon_move_black_not_allowed(two_clients)
-        room: Room = rooms[self._room_name]
-        room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Player.BLACK
-        room.board = [
-            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 8, 1, 1, 1
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = black_client.get_received()
-
+        assert recv[0]["args"][0]["message"] == "Städte nicht bewegen"
         assert (
-            recv[0]["args"][0]["message"]
-            == f"Move {(startX, startY), (endX, endY)} nicht moglich zu moven"
+            room.board[startX][startY] == Town.WHITE
+            if player == Player.WHITE
+            else Town.BLACK
         )
-        assert room.board[startX][startY] == Soldier.BLACK
         assert room.board[endX][endY] == EMPTY
-        assert room.black_captured == 0
-        assert room.white_captured == 0
+        assert room._turn == player
 
-    def test_cannon_shoot_white_front(self, two_clients: Clients):
-        self.test_cannon_move_black_not_allowed(two_clients)
+    @pytest.mark.parametrize(
+        "startX,startY,endX,endY,player",
+        [(-23, 100, 13, -13, Player.WHITE), (11, 23, 203, 20, Player.BLACK)],
+    )
+    def test_move_coord_invalide(
+        self,
+        startX: int,
+        startY: int,
+        endX: int,
+        endY: int,
+        player: Player,
+        two_clients: Clients,
+    ):
         room: Room = rooms[self._room_name]
         room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Player.WHITE
-        room.board = [
-            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-        white_client, _, _, _ = get_white_black_clients(two_clients, room)
-        white_client.get_received()  # clear all messages in list
+        room._turn = player
+        white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
+        black_client.get_received()
+        white_client.get_received()
 
-        startX, startY, endX, endY = 1, 1, 5, 1
-        white_client.emit("move_object", startX, startY, endX, endY, room.name)
+        client = white_client if player == Player.WHITE else black_client
 
-        recv = white_client.get_received()
+        client.emit("move_object", startX, startY, endX, endY, room.name)
+        recv = client.get_received()
 
-        assert recv[1]["args"][0]["message"] == f"cannon shoot capture {endX, endY}"
-        assert recv[0]["args"][0]["turn"] == f"Turn: {room._turn.name}"
-        assert room.board[startX][startY] == Soldier.WHITE
-        assert room.board[endX][endY] == EMPTY
-        assert room.black_captured == 0
-        assert room.white_captured == 1
+        assert recv[0]["args"][0]["message"] == "Move Coord nicht valide"
+        assert room._turn == player
 
-    def test_cannon_shoot_white_front_intercepted(self, two_clients: Clients):
-        self.test_cannon_move_black_not_allowed(two_clients)
+    @pytest.mark.parametrize(
+        "startX,startY,endX,endY,player",
+        [(1, 3, 0, 4, Player.BLACK), (8, 7, 9, 7, Player.WHITE)],
+    )
+    def test_soldier_capture_town(
+        self,
+        startX: int,
+        startY: int,
+        endX: int,
+        endY: int,
+        player: Player,
+        two_clients: Clients,
+    ):
         room: Room = rooms[self._room_name]
+        room._turn = player
         room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Player.WHITE
-        room.board = [
-            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-        white_client, _, _, _ = get_white_black_clients(two_clients, room)
-        white_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 1, 1, 4, 1
-        white_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = white_client.get_received()
-
-        assert recv[0]["args"][0]["message"] == "cannon shoot intercepted"
-        assert room.board[startX][startY] == Soldier.WHITE
-        assert room.board[endX][endY] == Soldier.BLACK
-        assert room.black_captured == 0
-        assert room.white_captured == 0
-
-    def test_cannon_shoot_white_diagonally_left(self, two_clients: Clients):
-        self.test_cannon_move_black_not_allowed(two_clients)
-        room: Room = rooms[self._room_name]
-        room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Player.WHITE
-        room.board = [
-            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 1, 1, 1, 0, 0, 0, 0, 0, 0],
-            [0, 1, 0, 1, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 2, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-        white_client, _, _, _ = get_white_black_clients(two_clients, room)
-        white_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 1, 1, 5, 5
-        white_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = white_client.get_received()
-
-        assert recv[1]["args"][0]["message"] == f"cannon shoot capture {endX, endY}"
-        assert recv[0]["args"][0]["turn"] == f"Turn: {room._turn.name}"
-        assert room.board[startX][startY] == Soldier.WHITE
-        assert room.board[endX][endY] == EMPTY
-        assert room.black_captured == 0
-        assert room.white_captured == 1
-
-    def test_cannon_shoot_white_front_interception(self, two_clients: Clients):
-        self.test_cannon_move_black_not_allowed(two_clients)
-        room: Room = rooms[self._room_name]
-        room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Player.WHITE
-        room.board = [
-            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-        white_client, _, _, _ = get_white_black_clients(two_clients, room)
-        white_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 1, 1, 6, 1
-        white_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = white_client.get_received()
-
-        assert recv[0]["args"][0]["message"] == "target is invalide"
-        assert room.board[startX][startY] == Soldier.WHITE
-        assert room.board[endX][endY] == EMPTY
-        assert room.black_captured == 0
-        assert room.white_captured == 0
-
-    def test_soldier_black_capture_town_white(self, two_clients: Clients):
-        self.test_first_white_move(two_clients)
-        room: Room = rooms[self._room_name]
         room.board = [
             [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
             [0, 0, 0, 2, 0, 0, 0, 0, 0, 0],
@@ -816,318 +317,200 @@ class TestRoom:
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
         ]
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
+        white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
+        black_client.get_received()
+        white_client.get_received()
 
-        startX, startY, endX, endY = 1, 3, 0, 4
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
+        client = white_client if player == Player.WHITE else black_client
+        client.emit("move_object", startX, startY, endX, endY, room.name)
 
-        recv = black_client.get_received()
-        pprint(recv)
+        recv = client.get_received()
 
         assert recv[0]["args"][0]["message"] == "Game Over"
-        assert recv[0]["args"][0]["winner"] == f"Winner: {Player.BLACK.name}"
+        assert recv[0]["args"][0]["winner"] == f"Winner: {player.name}"
         assert room.gameState == GameState.GAME_OVER
         assert room.board[startX][startY] == EMPTY
         assert room.black_captured == 0
         assert room.white_captured == 0
-        assert room._turn == Player.BLACK
+        assert room._turn == player
 
-    def test_soldier_white_capture_town_black(self, two_clients: Clients):
-        self.test_first_move_black(two_clients)
+    @pytest.mark.parametrize(
+        "startX,startY,endX,endY,player",
+        [(5, 7, 9, 7, Player.WHITE), (5, 5, 0, 5, Player.BLACK)],
+    )
+    def test_cannon_shoot_capture_town(
+        self,
+        startX: int,
+        startY: int,
+        endX: int,
+        endY: int,
+        player: Player,
+        two_clients: Clients,
+    ):
         room: Room = rooms[self._room_name]
-        room.board = [
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-        white_client, _, _, _ = get_white_black_clients(two_clients, room)
-        white_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 8, 6, 9, 7
-        white_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = white_client.get_received()
-
-        assert recv[0]["args"][0]["message"] == "Game Over"
-        assert recv[0]["args"][0]["winner"] == f"Winner: {Player.WHITE.name}"
-        assert room.gameState == GameState.GAME_OVER
-        assert room.board[startX][startY] == EMPTY
-        assert room.black_captured == 0
-        assert room.white_captured == 0
-        assert room._turn == Player.WHITE
-
-    def test_white_cannon_shoot_capture_town(self, two_clients: Clients):
-        self.test_first_move_black(two_clients)
-        room: Room = rooms[self._room_name]
-        room.board = [
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-        white_client, _, _, _ = get_white_black_clients(two_clients, room)
-        white_client.get_received()  # clear all messages in list
-
-        startX, startY, endX, endY = 5, 7, 9, 7
-        white_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = white_client.get_received()
-
-        assert recv[0]["args"][0]["message"] == "Game Over"
-        assert room.gameState == GameState.GAME_OVER
-        assert room.black_captured == 0
-        assert room.white_captured == 0
-        assert room._turn == Player.WHITE
-
-    def test_black_cannon_shoot_capture_town(self, two_clients: Clients):
-        self.test_first_white_move(two_clients)
-        room: Room = rooms[self._room_name]
+        room._turn = player
+        room.gameState = GameState.MOVE_SOLDATEN
         room.board = [
             [0, 0, 0, 0, 0, 3, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 2, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 2, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 2, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 2, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
         ]
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
+        white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
+        white_client.get_received()
+        black_client.get_received()
 
-        startX, startY, endX, endY = 5, 5, 0, 5
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
+        client = white_client if player == Player.WHITE else black_client
+        client.emit("move_object", startX, startY, endX, endY, room.name)
 
-        recv = black_client.get_received()
+        recv = client.get_received()
 
         assert recv[0]["args"][0]["message"] == "Game Over"
         assert room.gameState == GameState.GAME_OVER
         assert room.black_captured == 0
         assert room.white_captured == 0
-        assert room._turn == Player.BLACK
+        assert room._turn == player
 
-    def test_black_surrender(self, two_clients: Clients):
-        self.test_first_white_move(two_clients)
+    @pytest.mark.parametrize("player", [(Player.BLACK), (Player.WHITE)])
+    def test_client_surrender(self, player: Player, two_clients: Clients):
         room: Room = rooms[self._room_name]
+        room._turn = player
 
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
+        white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
+        black_client.get_received()
+        white_client.get_received()
 
-        black_client.emit("surrender", room._turn, room.name)
+        client = white_client if player == Player.WHITE else black_client
+        client.emit("surrender", room._turn, room.name)
 
-        assert black_client.is_connected() == False
+        assert client.is_connected() == False
         assert room.gameState == GameState.GAME_OVER
-        assert room._turn == Player.BLACK
+        assert room._turn == player
 
-    def test_white_surrender(self, two_clients: Clients):
-        self.test_first_move_black(two_clients)
-        room: Room = rooms[self._room_name]
-        white_client, _, _, _ = get_white_black_clients(two_clients, room)
-        white_client.get_received()  # clear all messages in list
-
-        white_client.emit("surrender", room._turn, room.name)
-
-        assert white_client.is_connected() == False
-        assert room.gameState == GameState.GAME_OVER
-        assert room._turn == Player.WHITE
-
-    def test_black_disconnect(self, two_clients: Clients):
-        self.test_first_white_move(two_clients)
+    @pytest.mark.parametrize("player", [(Player.WHITE), (Player.BLACK)])
+    def test_client_disconnect(self, player: Player, two_clients: Clients):
         room: Room = rooms[self._room_name]
         white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
-        white_client.get_received()  # clear all messages in list
+        white_client.get_received()
+        black_client.get_received()
 
-        black_client.emit("disconnect", room.name)
+        client = white_client if player == Player.WHITE else black_client
+        client.emit("disconnect", room.name)
+        opponent_client = black_client if player == Player.WHITE else white_client
 
-        recv = white_client.get_received()
+        recv = opponent_client.get_received()
 
         assert recv[0]["args"][0]["message"] == "Opponent disconnected"
-        assert black_client.is_connected() == False
-        assert white_client.is_connected() == True
+        assert black_client.is_connected() == False if player == Player.BLACK else True
+        assert white_client.is_connected() == False if player == Player.WHITE else True
         assert len(room.players) == 1
 
-    def test_white_disconnect(self, two_clients: Clients):
-        self.test_first_move_black(two_clients)
+    @pytest.mark.parametrize(
+        "startX,startY,endX,endY,player",
+        [(3, 1, 4, 2, Player.WHITE), (6, 5, 5, 6, Player.BLACK)],
+    )
+    def test_soldier_move_occupied_field(
+        self,
+        startX: int,
+        startY: int,
+        endX: int,
+        endY: int,
+        player: Player,
+        two_clients: Clients,
+    ):
         room: Room = rooms[self._room_name]
+        room.gameState = GameState.MOVE_SOLDATEN
+        room._turn = player
         white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
-        white_client.get_received()  # clear all messages in list
-
-        white_client.emit("disconnect", room.name)
-
-        recv = black_client.get_received()
-
-        assert recv[0]["args"][0]["message"] == "Opponent disconnected"
-        assert black_client.is_connected() == True
-        assert white_client.is_connected() == False
-        assert len(room.players) == 1
-
-    def test_move_soldier_white_to_white_soldier(self, two_clients: Clients):
-        self.test_first_move_black(two_clients)
-        room: Room = rooms[self._room_name]
-        white_client, _, _, _ = get_white_black_clients(two_clients, room)
-        white_client.get_received()  # clear all messages in list
+        white_client.get_received()
+        black_client.get_received()
         room.board = [
             [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
             [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
             [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
             [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
             [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 2, 0, 0, 0],
+            [0, 0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 2, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
         ]
 
-        startX, startY, endX, endY = 3, 1, 4, 2
-        white_client.emit("move_object", startX, startY, endX, endY, room.name)
+        client = white_client if player == Player.WHITE else black_client
+        client.emit("move_object", startX, startY, endX, endY, room.name)
 
-        recv = white_client.get_received()
+        recv = client.get_received()
 
         assert recv[0]["args"][0]["message"] == "Feld ist besetzt"
-        assert room.board[startX][startY] == Soldier.WHITE
-        assert room.board[endX][endY] == Soldier.WHITE
-        assert room._turn == Player.WHITE
+        assert (
+            room.board[startX][startY] == Soldier.WHITE
+            if player == Player.WHITE
+            else Soldier.BLACK
+        )
+        assert (
+            room.board[endX][endY] == Soldier.WHITE
+            if player == Player.WHITE
+            else Soldier.BLACK
+        )
+        assert room._turn == player
         assert room.black_captured == 0
         assert room.white_captured == 0
 
-    def test_move_soldier_black_to_black_soldier(self, two_clients: Clients):
-        self.test_first_white_move(two_clients)
+    @pytest.mark.parametrize(
+        "startX,startY,endX,endY,player",
+        [(4, 2, 9, 7, Player.WHITE), (5, 9, 0, 4, Player.BLACK)],
+    )
+    def test_cannon_shoot_center_axis(
+        self,
+        startX: int,
+        startY: int,
+        endX: int,
+        endY: int,
+        player: Player,
+        two_clients: Clients,
+    ):
         room: Room = rooms[self._room_name]
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
-        black_client.get_received()  # clear all messages in list
-        room.board = [
-            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 2, 0, 0, 0, 0, 0, 0],
-            [0, 0, 2, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 2, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 2, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-
-        startX, startY, endX, endY = 5, 2, 4, 3
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = black_client.get_received()
-
-        assert recv[0]["args"][0]["message"] == "Feld ist besetzt"
-        assert room.board[startX][startY] == Soldier.BLACK
-        assert room.board[endX][endY] == Soldier.BLACK
-        assert room._turn == Player.BLACK
-        assert room.black_captured == 0
-        assert room.white_captured == 0
-
-    def test_soldier_move_side_black(self, two_clients: Clients):
-        self.test_first_white_move(two_clients)
-        room: Room = rooms[self._room_name]
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
+        room._turn = player
+        room.gameState = GameState.MOVE_SOLDATEN
+        white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
+        white_client.get_received()
         black_client.get_received()
         room.board = [
             [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 2, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 2, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0, 2, 0],
+            [0, 0, 0, 1, 0, 0, 0, 0, 0, 2],
+            [0, 0, 0, 0, 1, 0, 0, 0, 0, 2],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 2],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
         ]
 
-        startX, startY, endX, endY = 7, 2, 7, 1
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
+        client = white_client if player == Player.WHITE else black_client
+        client.emit("move_object", startX, startY, endX, endY, room.name)
 
-        recv = black_client.get_received()
-
-        assert recv[0]["args"][0]["message"] == "Soldier cant move there"
-        assert room.board[startX][startY] == Soldier.BLACK
-        assert room.board[endX][endY] == EMPTY
-        assert room._turn == Player.BLACK
-        assert room.black_captured == 0
-        assert room.white_captured == 0
-
-    def test_soldier_move_side_white(self, two_clients: Clients):
-        self.test_first_move_black(two_clients)
-        room: Room = rooms[self._room_name]
-        white_client, _, _, _ = get_white_black_clients(two_clients, room)
-        white_client.get_received()
-        room.board = [
-            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-
-        startX, startY, endX, endY = 2, 2, 1, 1
-        white_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = white_client.get_received()
-
-        assert recv[0]["args"][0]["message"] == "Soldier cant move there"
-        assert room.board[startX][startY] == Soldier.WHITE
-        assert room.board[endX][endY] == EMPTY
-        assert room._turn == Player.WHITE
-        assert room.black_captured == 0
-        assert room.white_captured == 0
-
-    def test_cannon_shoot_white_center_cannon(self, two_clients: Clients):
-        self.test_first_move_black(two_clients)
-        room: Room = rooms[self._room_name]
-        white_client, _, _, _ = get_white_black_clients(two_clients, room)
-        white_client.get_received()
-        room.board = [
-            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
-        ]
-
-        startX, startY, endX, endY = 4, 2, 9, 7
-        white_client.emit("move_object", startX, startY, endX, endY, room.name)
-
-        recv = white_client.get_received()
+        recv = client.get_received()
 
         assert recv[0]["args"][0]["message"] == "Game Over"
         assert room.board[startX][startY] == EMPTY
-        assert room.board[endX][endY] == Town.BLACK
-        assert room._turn == Player.WHITE
+        assert (
+            room.board[endX][endY] == Town.BLACK
+            if player == Player.WHITE
+            else Town.WHITE
+        )
+        assert room._turn == player
         assert room.black_captured == 0
         assert room.white_captured == 0
 
@@ -1163,63 +546,152 @@ class TestRoom:
         assert white_recv[0]["args"][0]["winner"] == f"Winner: {Player.BLACK.name}"
 
     @pytest.mark.parametrize(
-        "startX,startY,endX,endY,excepted",
+        "startX,startY,endX,endY,player",
         [
-            (6, 4, 7, 3, "Soldier cant move there"),
-            (6, 4, 7, 4, "Soldier cant move there"),
-            (6, 4, 7, 5, "Soldier cant move there"),
+            (6, 4, 7, 3, Player.BLACK),
+            (6, 4, 7, 4, Player.BLACK),
+            (6, 4, 7, 5, Player.BLACK),
+            (6, 4, 6, 3, Player.BLACK),
+            (6, 4, 6, 5, Player.BLACK),
+            (3, 4, 2, 3, Player.WHITE),
+            (3, 4, 2, 5, Player.WHITE),
+            (3, 4, 2, 4, Player.WHITE),
+            (3, 4, 3, 3, Player.WHITE),
+            (3, 4, 3, 5, Player.WHITE),
         ],
     )
-    def test_black_soldier_moves_not_allowed(
+    def test_soldier_moves_not_allowed(
         self,
         startX: int,
         startY: int,
         endX: int,
         endY: int,
-        excepted: str,
+        player: Player,
         two_clients: Clients,
     ):
         room: Room = rooms[self._room_name]
         room.gameState = GameState.MOVE_SOLDATEN
-        room._turn = Player.BLACK
-        _, _, black_client, _ = get_white_black_clients(two_clients, room)
+        room._turn = player
+        white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
+        white_client.get_received()
         black_client.get_received()
         room.board = [
             [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
-            [0, 0, 0, 1, 2, 1, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
         ]
 
-        black_client.emit("move_object", startX, startY, endX, endY, room.name)
+        client = white_client if player == Player.WHITE else black_client
+        client.emit("move_object", startX, startY, endX, endY, room.name)
 
-        recv = black_client.get_received()
-        assert recv[0]["args"][0]["message"] == excepted
+        recv = client.get_received()
+        assert recv[0]["args"][0]["message"] == "Soldier cant move there"
 
     @pytest.mark.parametrize(
-        "startX,startY,endX,endY,excepted",
+        "startX,startY,endX,endY,player",
         [
-            (6, 5, 3, 5, f"Turn: {Player.WHITE.name}"),
-            (4, 5, 7, 5, f"Turn: {Player.WHITE.name}"),
-            (4, 3, 7, 6, f"Turn: {Player.WHITE.name}"),
-            (6, 5, 3, 2, f"Turn: {Player.WHITE.name}"),
-            (5, 3, 5, 6, f"Turn: {Player.WHITE.name}"),
-            (5, 5, 5, 2, f"Turn: {Player.WHITE.name}"),
+            (6, 5, 3, 5, Player.BLACK),
+            (4, 5, 7, 5, Player.BLACK),
+            (4, 3, 7, 6, Player.BLACK),
+            (6, 5, 3, 2, Player.BLACK),
+            (5, 3, 5, 6, Player.BLACK),
+            (5, 5, 5, 2, Player.BLACK),
+            (6, 5, 3, 5, Player.WHITE),
+            (4, 5, 7, 5, Player.WHITE),
+            (4, 3, 7, 6, Player.WHITE),
+            (6, 5, 3, 2, Player.WHITE),
+            (5, 3, 5, 6, Player.WHITE),
+            (5, 5, 5, 2, Player.WHITE),
         ],
     )
-    def test_all_cannon_moves_black(
+    def test_all_cannon_moves(
         self,
         startX: int,
         startY: int,
         endX: int,
         endY: int,
-        excepted: str,
+        player: Player,
+        two_clients: Clients,
+    ):
+        room: Room = rooms[self._room_name]
+        room.gameState = GameState.MOVE_SOLDATEN
+        room._turn = player
+        white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
+        white_client.get_received()
+        black_client.get_received()
+        room.board[startX][startY] = (
+            Soldier.BLACK if player == Player.BLACK else Soldier.WHITE
+        )
+        client = white_client if player == Player.WHITE else black_client
+        client.emit("move_object", startX, startY, endX, endY, room.name)
+
+        recv = client.get_received()
+        assert recv[0]["args"][0]["turn"] == f"Turn: {player.opponent.name}"
+        assert room._turn == player.opponent
+
+    @pytest.mark.parametrize(
+        "startX,startY,endX,endY,player",
+        [
+            (4, 5, 6, 5, Player.BLACK),
+            (4, 5, 6, 3, Player.BLACK),
+            (4, 5, 6, 7, Player.BLACK),
+            (6, 2, 4, 2, Player.WHITE),
+            (6, 2, 4, 0, Player.WHITE),
+            (6, 2, 4, 4, Player.WHITE),
+        ],
+    )
+    def test_all_soldier_thread_moves(
+        self,
+        startX: int,
+        startY: int,
+        endX: int,
+        endY: int,
+        player: Player,
+        two_clients: Clients,
+    ):
+        room: Room = rooms[self._room_name]
+        room.gameState = GameState.MOVE_SOLDATEN
+        room._turn = player
+        white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
+        white_client.get_received()
+        black_client.get_received()
+        room.board = [
+            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 0, 1, 0, 0, 0],
+            [0, 0, 0, 0, 0, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+            [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
+        ]
+
+        client = white_client if player == Player.WHITE else black_client
+        client.emit("move_object", startX, startY, endX, endY, room.name)
+
+        recv = client.get_received()
+        assert recv[0]["args"][0]["message"] == f"thread move ({endX}, {endY}) moved"
+        assert room._turn == player.opponent
+
+    @pytest.mark.parametrize(
+        "startX,startY,endX,endY",
+        [(8, 4, 3, 4), (8, 4, 4, 8), (8, 4, 3, 9), (8, 6, 3, 1), (8, 6, 4, 2)],
+    )
+    def test_cannons_shoot_black(
+        self,
+        startX: int,
+        startY: int,
+        endX: int,
+        endY: int,
         two_clients: Clients,
     ):
         room: Room = rooms[self._room_name]
@@ -1231,16 +703,155 @@ class TestRoom:
             [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 1, 0, 0, 1, 0, 0, 0, 0, 1],
+            [0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 2, 0, 2, 0, 0, 0, 0],
-            [0, 0, 0, 2, 2, 2, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 2, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 2, 0, 0, 0, 0],
+            [0, 0, 0, 0, 2, 0, 2, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
         ]
 
         black_client.emit("move_object", startX, startY, endX, endY, room.name)
 
         recv = black_client.get_received()
-        assert recv[0]["args"][0]["turn"] == excepted
+        assert recv[1]["args"][0]["message"] == f"cannon shoot capture ({endX}, {endY})"
+        assert room._turn == Player.WHITE
+        assert room.black_captured == 1
+        assert room.white_captured == 0
+
+    @pytest.mark.parametrize(
+        "startX,startY,endX,endY",
+        [(1, 4, 6, 4), (1, 4, 5, 8), (1, 4, 6, 9), (1, 6, 5, 2), (1, 6, 6, 1)],
+    )
+    def test_cannon_shoot_white(
+        self,
+        startX: int,
+        startY: int,
+        endX: int,
+        endY: int,
+        two_clients: Clients,
+    ):
+        room: Room = rooms[self._room_name]
+        room.gameState = GameState.MOVE_SOLDATEN
+        room._turn = Player.WHITE
+        white_client, _, _, _ = get_white_black_clients(two_clients, room)
+        white_client.get_received()
+        room.board = [
+            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 0, 1, 0, 0, 0],
+            [0, 0, 0, 0, 1, 1, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 2, 0, 0, 0, 0, 0, 2, 0],
+            [0, 2, 0, 0, 2, 0, 0, 0, 0, 2],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
+        ]
+
+        white_client.emit("move_object", startX, startY, endX, endY, room.name)
+
+        recv = white_client.get_received()
+        assert recv[1]["args"][0]["message"] == f"cannon shoot capture ({endX}, {endY})"
+        assert room.white_captured == 1
+        assert room.black_captured == 0
+        assert room._turn == Player.BLACK
+
+    @pytest.mark.parametrize(
+        "startX,startY,endX,endY,player",
+        [
+            (8, 6, 3, 6, Player.BLACK),
+            (1, 0, 5, 0, Player.WHITE),
+        ],
+    )
+    def test_cannon_shoot_intercepted(
+        self,
+        startX: int,
+        startY: int,
+        endX: int,
+        endY: int,
+        player: Player,
+        two_clients: Clients,
+    ):
+        room: Room = rooms[self._room_name]
+        room.gameState = GameState.MOVE_SOLDATEN
+        room._turn = player
+        white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
+        white_client.get_received()
+        black_client.get_received()
+        room.board = [
+            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [2, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 2, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 2, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 2, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
+        ]
+
+        client = white_client if player == Player.WHITE else black_client
+        client.emit("move_object", startX, startY, endX, endY, room.name)
+
+        recv = client.get_received()
+        assert recv[0]["args"][0]["message"] == "cannon shoot intercepted"
+        assert room._turn == player
+        assert room.black_captured == 0
+        assert room.white_captured == 0
+
+    @pytest.mark.parametrize(
+        "startX,startY,endX,endY,player",
+        [
+            (6, 3, 6, 2, Player.BLACK),
+            (6, 3, 6, 4, Player.BLACK),
+            (6, 3, 5, 2, Player.BLACK),
+            (6, 3, 5, 3, Player.BLACK),
+            (6, 3, 5, 4, Player.BLACK),
+            (2, 6, 2, 5, Player.WHITE),
+            (2, 6, 3, 5, Player.WHITE),
+            (2, 6, 3, 6, Player.WHITE),
+            (2, 6, 3, 7, Player.WHITE),
+            (2, 6, 2, 7, Player.WHITE),
+        ],
+    )
+    def test_soldier_capture(
+        self,
+        startX: int,
+        startY: int,
+        endX: int,
+        endY: int,
+        player: Player,
+        two_clients: Clients,
+    ):
+        room: Room = rooms[self._room_name]
+        room.gameState = GameState.MOVE_SOLDATEN
+        room._turn = player
+        white_client, _, black_client, _ = get_white_black_clients(two_clients, room)
+        white_client.get_received()
+        black_client.get_received()
+        room.board = [
+            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 2, 1, 2, 0, 0],
+            [0, 0, 0, 0, 0, 2, 2, 2, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 1, 1, 0, 0, 0, 0, 0],
+            [0, 0, 1, 2, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
+        ]
+
+        client = white_client if player == Player.WHITE else black_client
+        client.emit("move_object", startX, startY, endX, endY, room.name)
+
+        recv = client.get_received()
+
+        assert recv[0]["args"][0]["capture"] == "Capture: 1"
+        assert recv[1]["args"][0]["turn"] == f"Turn: {player.opponent.name}"
+        assert room._turn == player.opponent
+        assert room.black_captured == 0 if player == player.opponent else 1
+        assert room.black_captured == 0 if player == player.opponent else 1
