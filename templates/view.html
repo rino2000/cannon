@@ -44,7 +44,7 @@
       const TOWN_WHITE = "🏠";
       const TOWN_BLACK = "🏡";
 
-      let socket = io("http://127.0.0.1:8000", { transports: ["polling"] });
+      let socket = io();
       let room = "";
       let field = null;
       let player = null;
