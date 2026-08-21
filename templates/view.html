@@ -44,7 +44,9 @@
       const TOWN_WHITE = "🏠";
       const TOWN_BLACK = "🏡";
 
-      let socket = io();
+      let socket = io("https://cannon-xnec.onrender.com/", {
+        transports: ["websocket", "pooling"],
+      });
       let room = "";
       let field = null;
       let player = null;
