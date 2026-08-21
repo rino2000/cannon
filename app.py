@@ -1,3 +1,4 @@
+import os
 import random
 from collections import Counter
 from dataclasses import dataclass, field
@@ -12,16 +13,13 @@ from flask_socketio import SocketIO, emit
 
 app = Flask(__name__)
 
-app.config["SECRET_KEY"] = "secret!"
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
 
 socketio = SocketIO(
     app,
-    cors_allowed_origins="*",
-    sync_move="threading",
-    logger=True,
-    engineio_logger=True,
-    ping_timeout=10000,
-    ping_interval=10000,
+    async_mode="eventlet",
+    ping_timeout=20,
+    ping_interval=25,
 )
 
 EMPTY: Final = 0
@@ -595,4 +593,4 @@ def handle_disconnect(room: str):
 
 
 if __name__ == "__main__":
-    socketio.run(app, host="127.0.0.1", port=8000, debug=True)
+    socketio.run(app, host="0.0.0.0", port=8000, debug=False)
