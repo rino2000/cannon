@@ -17,9 +17,11 @@ app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
 
 socketio = SocketIO(
     app,
-    async_mode="eventlet",
+    async_mode="gevent",
     ping_timeout=20,
     ping_interval=25,
+    logger=False,
+    engineio_logger=False,
 )
 
 EMPTY: Final = 0
